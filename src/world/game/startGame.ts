@@ -73,7 +73,10 @@ export async function startGame(shell: AppShell) {
 
   let yaw = Math.PI; // Position camera behind the sub
   let yawVel = 0;
-  const yawSpeed = 1.25; // rad/s
+  let yawSpeed = 0.25; // rad/s
+  let moveSpeed = 5.0; // units/s
+  let mouseSensitivity = 0.005;
+  let cameraDistMulti = 0.9;
 
   const keyState: Record<string, boolean> = {
     q: false, e: false,
@@ -98,6 +101,8 @@ export async function startGame(shell: AppShell) {
 
   // UI for Mouse Control Toggle
   let mouseLookActive = false;
+  // Mouse look toggle disabled for now
+  /*
   const mouseToggle = document.createElement("button");
   mouseToggle.className = "btn";
   mouseToggle.style.position = "absolute";
@@ -117,6 +122,55 @@ export async function startGame(shell: AppShell) {
       document.exitPointerLock?.();
     }
   };
+  */
+
+  let debugPanel: HTMLDivElement | null = null;
+  if (import.meta.env.DEV) {
+    debugPanel = document.createElement("div");
+    debugPanel.style.position = "absolute";
+    debugPanel.style.left = "16px";
+    debugPanel.style.top = "80px";
+    debugPanel.style.background = "rgba(0,0,0,0.7)";
+    debugPanel.style.padding = "10px";
+    debugPanel.style.borderRadius = "8px";
+    debugPanel.style.color = "white";
+    debugPanel.style.display = "flex";
+    debugPanel.style.flexDirection = "column";
+    debugPanel.style.gap = "8px";
+    debugPanel.style.pointerEvents = "auto";
+    shell.hud.appendChild(debugPanel);
+
+    function createSlider(label: string, min: number, max: number, step: number, value: number, onChange: (v: number) => void) {
+      const container = document.createElement("div");
+      container.style.display = "flex";
+      container.style.flexDirection = "column";
+      const labelEl = document.createElement("div");
+      labelEl.textContent = `${label}: ${value}`;
+      labelEl.style.fontSize = "12px";
+      
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = min.toString();
+      slider.max = max.toString();
+      slider.step = step.toString();
+      slider.value = value.toString();
+      
+      slider.oninput = () => {
+        const v = parseFloat(slider.value);
+        labelEl.textContent = `${label}: ${v}`;
+        onChange(v);
+      };
+      
+      container.appendChild(labelEl);
+      container.appendChild(slider);
+      debugPanel!.appendChild(container);
+    }
+
+    createSlider("Move Speed", 1, 50, 1, moveSpeed, v => moveSpeed = v);
+    createSlider("Yaw Speed", 0.1, 5, 0.1, yawSpeed, v => yawSpeed = v);
+    createSlider("Mouse Sens", 0.001, 0.02, 0.001, mouseSensitivity, v => mouseSensitivity = v);
+    createSlider("Cam Dist Multi", 0.2, 3, 0.1, cameraDistMulti, v => cameraDistMulti = v);
+  }
 
   let mouseDeltaX = 0;
   const onMouseMove = (ev: MouseEvent) => {
@@ -150,7 +204,6 @@ export async function startGame(shell: AppShell) {
   const desired = new THREE.Vector3();
   const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
   const height = radius * 0.45;
-  const moveSpeed = 15.0; // units/s
 
   let raf = 0;
   let last = performance.now();
@@ -167,7 +220,7 @@ export async function startGame(shell: AppShell) {
     // Update yaw from keyboard and mouse
     yaw += yawVel * dt;
     if (mouseLookActive) {
-      yaw -= mouseDeltaX * 0.005;
+      yaw -= mouseDeltaX * mouseSensitivity;
       mouseDeltaX = 0;
     }
 
@@ -195,7 +248,7 @@ export async function startGame(shell: AppShell) {
     // Follow target
     baseTarget.copy(subGroup.position);
 
-    const actualRadius = radius * 0.65; // Closer view
+    const actualRadius = radius * cameraDistMulti; // Closer view
     desired.set(Math.sin(yaw) * actualRadius, height * 0.7, Math.cos(yaw) * actualRadius).add(baseTarget);
     camPos.lerp(desired, 1 - Math.exp(-dt * 6));
 
@@ -211,7 +264,8 @@ export async function startGame(shell: AppShell) {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
     window.removeEventListener("mousemove", onMouseMove);
-    mouseToggle.remove();
+    // mouseToggle.remove(); // Disabled
+    if (debugPanel) debugPanel.remove();
     renderer.dispose();
     shell.canvasHost.innerHTML = "";
   };
