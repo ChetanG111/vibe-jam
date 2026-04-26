@@ -21,6 +21,6 @@ export async function boot(mount: HTMLElement | null) {
     shell.setHint("Editor mode is available only in dev. Run `npm.cmd run dev` and open `/?mode=editor`.");
   }
 
-  const { startPlaceholderGame } = await import("../world/placeholder/startPlaceholderGame");
-  await startPlaceholderGame(shell);
+  const { startGame } = await import("../world/game/startGame");
+  await startGame(shell);
 }
