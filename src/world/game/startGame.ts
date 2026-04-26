@@ -6,7 +6,7 @@ export async function startGame(shell: AppShell) {
     { label: "Mode", value: "Game" },
     { label: "Camera", value: "Q/E orbit" },
   ]);
-  shell.setHint("Camera: Q/E to orbit. Movement comes next. `?mode=editor` is dev-only.");
+  shell.setHint("WASD to move. Space/Shift for depth. Q/E to orbit.");
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -60,6 +60,8 @@ export async function startGame(shell: AppShell) {
   subGroup.position.set(0, 0, 0);
   scene.add(subGroup);
 
+  addRandomProps(scene);
+
   // Load the user-provided OBJ for dev-only iteration.
   // In production builds this file is not shipped; we fall back to a small procedural placeholder.
   if (import.meta.env.DEV) {
@@ -69,20 +71,27 @@ export async function startGame(shell: AppShell) {
     addProceduralFallback(subGroup);
   }
 
-  // Camera orbit controls (Q/E) around the submarine at origin.
-  let yaw = Math.PI * 0.15;
+  let yaw = Math.PI; // Position camera behind the sub
   let yawVel = 0;
   const yawSpeed = 1.25; // rad/s
 
-  const keyState = { q: false, e: false };
+  const keyState: Record<string, boolean> = {
+    q: false, e: false,
+    w: false, s: false, a: false, d: false,
+    " ": false, shift: false
+  };
   const onKeyDown = (ev: KeyboardEvent) => {
     if (ev.repeat) return;
-    if (ev.key === "q" || ev.key === "Q") keyState.q = true;
-    if (ev.key === "e" || ev.key === "E") keyState.e = true;
+    const k = ev.key.toLowerCase();
+    if (k in keyState) keyState[k] = true;
+    if (ev.code === "Space") keyState[" "] = true;
+    if (ev.shiftKey) keyState["shift"] = true;
   };
   const onKeyUp = (ev: KeyboardEvent) => {
-    if (ev.key === "q" || ev.key === "Q") keyState.q = false;
-    if (ev.key === "e" || ev.key === "E") keyState.e = false;
+    const k = ev.key.toLowerCase();
+    if (k in keyState) keyState[k] = false;
+    if (ev.code === "Space") keyState[" "] = false;
+    if (!ev.shiftKey) keyState["shift"] = false;
   };
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
@@ -111,8 +120,7 @@ export async function startGame(shell: AppShell) {
   const desired = new THREE.Vector3();
   const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
   const height = radius * 0.45;
-  desired.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius).add(baseTarget);
-  camPos.copy(desired);
+  const moveSpeed = 15.0; // units/s
 
   let raf = 0;
   let last = performance.now();
@@ -121,12 +129,37 @@ export async function startGame(shell: AppShell) {
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
 
-    const dir = (keyState.e ? 1 : 0) - (keyState.q ? 1 : 0);
-    const desiredVel = dir * yawSpeed;
-    yawVel = lerp(yawVel, desiredVel, 1 - Math.exp(-dt * 14));
+    // Camera Orbit
+    const orbitDir = (keyState.e ? 1 : 0) - (keyState.q ? 1 : 0);
+    const desiredYawVel = orbitDir * yawSpeed;
+    yawVel = lerp(yawVel, desiredYawVel, 1 - Math.exp(-dt * 14));
     yaw += yawVel * dt;
 
-    desired.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius).add(baseTarget);
+    // Movement
+    const forward = (keyState.w ? 1 : 0) - (keyState.s ? 1 : 0);
+    const side = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
+    const up = (keyState[" "] ? 1 : 0) - (keyState.shift ? 1 : 0);
+
+    // Calculate movement relative to camera yaw
+    const moveX = (Math.cos(yaw) * side - Math.sin(yaw) * forward) * moveSpeed * dt;
+    const moveZ = (Math.sin(yaw) * -side - Math.cos(yaw) * forward) * moveSpeed * dt;
+    const moveY = up * moveSpeed * dt;
+
+    subGroup.position.x += moveX;
+    subGroup.position.y += moveY;
+    subGroup.position.z += moveZ;
+
+    // Rotate sub to face movement direction (basic lerped look-at)
+    if (Math.abs(moveX) > 0.001 || Math.abs(moveZ) > 0.001) {
+      const targetRotation = Math.atan2(moveX, moveZ);
+      subGroup.rotation.y = lerp(subGroup.rotation.y, targetRotation, 1 - Math.exp(-dt * 5));
+    }
+
+    // Follow target
+    baseTarget.copy(subGroup.position);
+
+    const actualRadius = radius * 0.65; // Closer view
+    desired.set(Math.sin(yaw) * actualRadius, height * 0.7, Math.cos(yaw) * actualRadius).add(baseTarget);
     camPos.lerp(desired, 1 - Math.exp(-dt * 6));
 
     camera.position.copy(camPos);
@@ -223,13 +256,58 @@ function addProceduralFallback(host: THREE.Group) {
     roughness: 0.8,
   });
   const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 6.0, 10, 1), hullMat);
-  hull.rotation.z = Math.PI / 2;
+  hull.rotation.x = Math.PI / 2;
   sub.add(hull);
   const conning = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.55, 1.2), hullMat);
-  conning.position.set(0.4, 0.65, 0);
+  conning.position.set(0, 0.65, 0.4);
   sub.add(conning);
   const glow = new THREE.PointLight(0x6ee7ff, 1.0, 18, 2);
   glow.position.set(-2.2, 0.35, 0);
   sub.add(glow);
   host.add(sub);
+}
+
+function addRandomProps(scene: THREE.Scene) {
+  const count = 80;
+  const range = 240;
+  const cubeGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+  const sphereGeo = new THREE.SphereGeometry(0.7, 12, 12);
+  
+  const cubeMat = new THREE.MeshStandardMaterial({
+    color: 0xff9d6e, // Warm orange
+    roughness: 0.3,
+    metalness: 0.7,
+    emissive: 0xff9d6e,
+    emissiveIntensity: 0.5,
+  });
+  
+  const sphereMat = new THREE.MeshStandardMaterial({
+    color: 0x6ee7ff, // Bright cyan
+    roughness: 0.2,
+    metalness: 0.8,
+    emissive: 0x6ee7ff,
+    emissiveIntensity: 0.8,
+  });
+
+  for (let i = 0; i < count; i++) {
+    const isCube = Math.random() > 0.5;
+    const mesh = new THREE.Mesh(isCube ? cubeGeo : sphereGeo, isCube ? cubeMat : sphereMat);
+    
+    mesh.position.set(
+      (Math.random() - 0.5) * range,
+      (Math.random() - 0.5) * 40 - 2, // Distributed around the sub depth
+      (Math.random() - 0.5) * range
+    );
+    
+    mesh.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI
+    );
+    
+    const scale = 0.4 + Math.random() * 2.5;
+    mesh.scale.setScalar(scale);
+    
+    scene.add(mesh);
+  }
 }
