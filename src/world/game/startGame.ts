@@ -38,7 +38,7 @@ export async function startGame(shell: AppShell) {
     }),
   );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0;
+  floor.position.y = -18;
   scene.add(floor);
 
   // "Water surface" just for visual reference in this step (no depth caps yet).
@@ -53,11 +53,11 @@ export async function startGame(shell: AppShell) {
     }),
   );
   water.rotation.x = -Math.PI / 2;
-  water.position.y = 18;
+  water.position.y = 8;
   scene.add(water);
 
   const subGroup = new THREE.Group();
-  subGroup.position.set(0, 10, 0);
+  subGroup.position.set(0, 0, 0);
   scene.add(subGroup);
 
   // Load the user-provided OBJ for dev-only iteration.
@@ -88,19 +88,31 @@ export async function startGame(shell: AppShell) {
   window.addEventListener("keyup", onKeyUp);
 
   const resize = () => {
-    const w = shell.canvasHost.clientWidth;
-    const h = shell.canvasHost.clientHeight;
-    renderer.setSize(w, h, false);
+    const w = Math.max(shell.canvasHost.clientWidth, 1);
+    const h = Math.max(shell.canvasHost.clientHeight, 1);
+    renderer.setSize(w, h, true);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
+  renderer.domElement.style.display = "block";
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
   const ro = new ResizeObserver(resize);
   ro.observe(shell.canvasHost);
   resize();
 
-  const target = new THREE.Vector3(0, 11, 0);
+  // "Perfect" centering: move the group so its bounding center is at origin,
+  // then point the camera at origin.
+  const subCenter = getVisualCenter(subGroup);
+  subGroup.position.sub(subCenter);
+  const baseTarget = new THREE.Vector3(0, 0, 0);
+
   const camPos = new THREE.Vector3();
   const desired = new THREE.Vector3();
+  const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
+  const height = radius * 0.45;
+  desired.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius).add(baseTarget);
+  camPos.copy(desired);
 
   let raf = 0;
   let last = performance.now();
@@ -109,19 +121,16 @@ export async function startGame(shell: AppShell) {
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
 
-    // Soft acceleration based on held keys.
     const dir = (keyState.e ? 1 : 0) - (keyState.q ? 1 : 0);
     const desiredVel = dir * yawSpeed;
     yawVel = lerp(yawVel, desiredVel, 1 - Math.exp(-dt * 14));
     yaw += yawVel * dt;
 
-    const radius = 24;
-    const height = 10.5;
-    desired.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius).add(target);
+    desired.set(Math.sin(yaw) * radius, height, Math.cos(yaw) * radius).add(baseTarget);
     camPos.lerp(desired, 1 - Math.exp(-dt * 6));
 
     camera.position.copy(camPos);
-    camera.lookAt(target);
+    camera.lookAt(baseTarget);
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
@@ -138,6 +147,28 @@ export async function startGame(shell: AppShell) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
+}
+
+function getVisualCenter(obj: THREE.Object3D) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  return center;
+}
+
+function getCameraDistanceForObject(
+  camera: THREE.PerspectiveCamera,
+  obj: THREE.Object3D,
+  center: THREE.Vector3,
+) {
+  const sphere = new THREE.Sphere();
+  new THREE.Box3().setFromObject(obj).getBoundingSphere(sphere);
+  const radius = Number.isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 6;
+  const verticalDistance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov) * 0.5);
+  const horizontalFov = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * camera.aspect);
+  const horizontalDistance = radius / Math.sin(horizontalFov * 0.5);
+  const centerOffset = sphere.center.distanceTo(center);
+  return Math.max(verticalDistance, horizontalDistance) + centerOffset + radius * 1.8;
 }
 
 async function tryLoadDevObj(host: THREE.Group): Promise<boolean> {
@@ -172,10 +203,9 @@ async function tryLoadDevObj(host: THREE.Group): Promise<boolean> {
     const scale = targetSize / maxDim;
     obj.scale.setScalar(scale);
 
-    // Recompute bounds after scaling and center it.
-    const box2 = new THREE.Box3().setFromObject(obj);
-    const center = new THREE.Vector3();
-    box2.getCenter(center);
+    // Recompute after scaling and center on the vertex centroid. This better
+    // matches the apparent mass of the OBJ than the midpoint of its bounds.
+    const center = getVisualCenter(obj);
     obj.position.sub(center);
 
     host.add(obj);
@@ -203,4 +233,3 @@ function addProceduralFallback(host: THREE.Group) {
   sub.add(glow);
   host.add(sub);
 }
-
