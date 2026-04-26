@@ -96,6 +96,36 @@ export async function startGame(shell: AppShell) {
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
+  // UI for Mouse Control Toggle
+  let mouseLookActive = false;
+  const mouseToggle = document.createElement("button");
+  mouseToggle.className = "btn";
+  mouseToggle.style.position = "absolute";
+  mouseToggle.style.right = "16px";
+  mouseToggle.style.top = "16px";
+  mouseToggle.style.pointerEvents = "auto";
+  mouseToggle.textContent = "Mouse Look: OFF";
+  shell.hud.appendChild(mouseToggle);
+
+  mouseToggle.onclick = () => {
+    mouseLookActive = !mouseLookActive;
+    mouseToggle.textContent = `Mouse Look: ${mouseLookActive ? "ON" : "OFF"}`;
+    mouseToggle.classList.toggle("primary", mouseLookActive);
+    if (mouseLookActive) {
+      shell.canvasHost.requestPointerLock?.();
+    } else {
+      document.exitPointerLock?.();
+    }
+  };
+
+  let mouseDeltaX = 0;
+  const onMouseMove = (ev: MouseEvent) => {
+    if (mouseLookActive) {
+      mouseDeltaX += ev.movementX;
+    }
+  };
+  window.addEventListener("mousemove", onMouseMove);
+
   const resize = () => {
     const w = Math.max(shell.canvasHost.clientWidth, 1);
     const h = Math.max(shell.canvasHost.clientHeight, 1);
@@ -129,18 +159,31 @@ export async function startGame(shell: AppShell) {
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
 
-    // Camera Orbit
-    const orbitDir = (keyState.e ? 1 : 0) - (keyState.q ? 1 : 0);
+    // Unified Camera Orbit & Submarine Rotation
+    const orbitDir = (keyState.q ? 1 : 0) - (keyState.e ? 1 : 0);
     const desiredYawVel = orbitDir * yawSpeed;
     yawVel = lerp(yawVel, desiredYawVel, 1 - Math.exp(-dt * 14));
+    
+    // Update yaw from keyboard and mouse
     yaw += yawVel * dt;
+    if (mouseLookActive) {
+      yaw -= mouseDeltaX * 0.005;
+      mouseDeltaX = 0;
+    }
+
+    // Submarine always faces away from the camera (forward into the view)
+    const targetSubRotation = yaw + Math.PI;
+    let diff = targetSubRotation - subGroup.rotation.y;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    subGroup.rotation.y += diff * (1 - Math.exp(-dt * 10));
 
     // Movement
     const forward = (keyState.w ? 1 : 0) - (keyState.s ? 1 : 0);
     const side = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
     const up = (keyState[" "] ? 1 : 0) - (keyState.shift ? 1 : 0);
 
-    // Calculate movement relative to camera yaw
+    // Always move relative to camera yaw
     const moveX = (Math.cos(yaw) * side - Math.sin(yaw) * forward) * moveSpeed * dt;
     const moveZ = (Math.sin(yaw) * -side - Math.cos(yaw) * forward) * moveSpeed * dt;
     const moveY = up * moveSpeed * dt;
@@ -148,12 +191,6 @@ export async function startGame(shell: AppShell) {
     subGroup.position.x += moveX;
     subGroup.position.y += moveY;
     subGroup.position.z += moveZ;
-
-    // Rotate sub to face movement direction (basic lerped look-at)
-    if (Math.abs(moveX) > 0.001 || Math.abs(moveZ) > 0.001) {
-      const targetRotation = Math.atan2(moveX, moveZ);
-      subGroup.rotation.y = lerp(subGroup.rotation.y, targetRotation, 1 - Math.exp(-dt * 5));
-    }
 
     // Follow target
     baseTarget.copy(subGroup.position);
@@ -173,6 +210,8 @@ export async function startGame(shell: AppShell) {
     ro.disconnect();
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("mousemove", onMouseMove);
+    mouseToggle.remove();
     renderer.dispose();
     shell.canvasHost.innerHTML = "";
   };
@@ -262,7 +301,7 @@ function addProceduralFallback(host: THREE.Group) {
   conning.position.set(0, 0.65, 0.4);
   sub.add(conning);
   const glow = new THREE.PointLight(0x6ee7ff, 1.0, 18, 2);
-  glow.position.set(-2.2, 0.35, 0);
+  glow.position.set(0, 0.35, -2.2);
   sub.add(glow);
   host.add(sub);
 }
