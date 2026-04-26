@@ -29,10 +29,16 @@ export function setupEnvironment(scene: THREE.Scene) {
   const waterGeometry = new THREE.PlaneGeometry(2000, 2000, 128, 128); // more segments for vertex waves
   const waterUniforms = {
     time: { value: 0 },
-    waterColor: { value: new THREE.Color(0x2892d1) }, // vibrant blue/cyan
-    foamColor: { value: new THREE.Color(0xffffff) },
-    tWater: { value: (() => {
-      const tex = new THREE.TextureLoader().load('/water.jpg');
+    waterColor: { value: new THREE.Color(0x3582ba) }, // Lighter deep blue (foreground)
+    skyColor: { value: new THREE.Color(0x6ac3fb) },   // Lighter cyan (distance)
+    opacity: { value: 0.85 },
+    normalStrength: { value: 4.0 },
+    fresnelPower: { value: 3.0 },
+    foamDensity: { value: 0.1 },
+    sunSparkleDensity: { value: 0.8 },
+    sunDir: { value: new THREE.Vector3(0.5, 0.8, -0.2).normalize() },
+    tNormal: { value: (() => {
+      const tex = new THREE.TextureLoader().load('/waternormals.jpg');
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
       return tex;
@@ -43,11 +49,14 @@ export function setupEnvironment(scene: THREE.Scene) {
     varying vec2 vUv;
     varying vec3 vWorldPosition;
     uniform float time;
+    
     void main() {
         vUv = uv;
         vec3 pos = position;
-        pos.z += sin(pos.x * 0.2 + time * 1.5) * 0.4;
-        pos.z += cos(pos.y * 0.2 + time * 1.2) * 0.4;
+        
+        // Gentle vertex waves for large rolling motion
+        float wave = sin(pos.x * 0.05 + time * 0.5) * cos(pos.y * 0.05 + time * 0.5) * 0.3;
+        pos.z += wave;
         
         vec4 worldPosition = modelMatrix * vec4(pos, 1.0);
         vWorldPosition = worldPosition.xyz;
@@ -58,25 +67,114 @@ export function setupEnvironment(scene: THREE.Scene) {
   const waterFragmentShader = `
     varying vec2 vUv;
     varying vec3 vWorldPosition;
-    uniform vec2 resolution;
     uniform float time;
     uniform vec3 waterColor;
-    uniform vec3 foamColor;
-    uniform sampler2D tWater;
+    uniform vec3 skyColor;
+    uniform float opacity;
+    uniform float normalStrength;
+    uniform float fresnelPower;
+    uniform float foamDensity;
+    uniform float sunSparkleDensity;
+    uniform vec3 sunDir;
+    uniform sampler2D tNormal;
+
+    float hash21(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+    
+    vec2 hash22(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.xx+p3.yz)*p3.zy);
+    }
 
     void main() {
-        vec2 texUv = vUv * 15.0; // scale texture to be much larger
-        texUv.x += time * 0.02; // slow scroll
-        texUv.y += time * 0.01;
-        vec4 texColor = texture2D(tWater, texUv);
+        // View direction
+        vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+
+        // Scroll two normal maps in different directions for a natural wave distortion
+        // Scale down the UVs so the waves are broad and smooth
+        vec2 uvNormal1 = vWorldPosition.xz * 0.02 + vec2(time * 0.015, time * 0.01);
+        vec2 uvNormal2 = vWorldPosition.xz * 0.03 + vec2(-time * 0.01, time * 0.015);
         
-        // Blend original water color with texture
-        vec3 baseWater = mix(waterColor, texColor.rgb, 0.6);
+        vec3 n1 = texture2D(tNormal, uvNormal1).rgb * 2.0 - 1.0;
+        vec3 n2 = texture2D(tNormal, uvNormal2).rgb * 2.0 - 1.0;
         
-        float ripple = sin(vWorldPosition.x * 0.5 + time) * cos(vWorldPosition.z * 0.5 + time);
-        vec3 finalColor = baseWater + (ripple * 0.05);
+        // Blend normals and map to world space (plane is flat on XZ, normal is +Y)
+        // We lessen the normal intensity to make it smooth
+        vec3 normal = normalize(vec3(n1.x + n2.x, normalStrength, n1.y + n2.y));
+
+        // Fresnel effect for base color (lighter far away, darker up close)
+        // Based on the distorted normal
+        float fresnel = max(0.0, 1.0 - max(0.0, dot(normal, viewDir)));
+        fresnel = pow(fresnel, fresnelPower); // Higher power pushes the light color further to the horizon
         
-        gl_FragColor = vec4(finalColor, 0.85);
+        // Clean base gradient
+        vec3 albedo = mix(waterColor, skyColor, fresnel * 0.8);
+
+        // Specular highlight area (Blinn-Phong)
+        vec3 halfVector = normalize(sunDir + viewDir);
+        float NdotH = max(0.0, dot(normal, halfVector));
+        float specularBase = pow(NdotH, 300.0);
+        float highlightArea = smoothstep(0.4, 0.45, specularBase);
+        
+        // Add a soft optical glow behind the sun sparkles
+        float softGlow = pow(NdotH, 60.0) * 0.6;
+        albedo += vec3(softGlow); // Blend the glow directly into the water color
+
+        // Particle 1: Sun Reflection Sparkles
+        vec2 sunUV = vWorldPosition.xz * 4.0 + normal.xz * 2.0; 
+        vec2 sunGrid = floor(sunUV);
+        vec2 sunFract = fract(sunUV);
+        
+        float sunSeed = hash21(sunGrid);
+        vec2 sunOffset = hash22(sunGrid) * 0.6 - 0.3; // Random position within the cell
+        
+        // Very fast lifespan for twinkling! (0.2s to 1s)
+        float sunLifespan = mix(0.2, 1.0, hash21(sunGrid + 13.5));
+        float sunTimeOffset = hash21(sunGrid + 24.6) * 100.0;
+        float sunLife = fract((time + sunTimeOffset) / sunLifespan);
+        float sunFade = sin(sunLife * 3.1415926);
+        
+        float sunDist = length(sunFract - (0.5 + sunOffset));
+        float sunMaxRadius = mix(0.1, 0.25, hash21(sunGrid + 35.7));
+        float sunCircle = smoothstep(sunMaxRadius, sunMaxRadius * 0.5, sunDist) * sunFade;
+        
+        // Map density so 0 = no particles, 1.0 = filled highlight
+        float sunParticleAmount = mix(1.0, 0.05, sunSparkleDensity); 
+        float sunSparkles = step(sunParticleAmount, sunSeed) * highlightArea * sunCircle;
+
+        // Particle 2: Random Foam Particles
+        // Stationary grid in world space so particles stay put as submarine moves
+        vec2 foamUV = vWorldPosition.xz * 2.5 + normal.xz * 2.0;
+        vec2 foamGrid = floor(foamUV);
+        vec2 foamFract = fract(foamUV);
+        
+        float foamSeed = hash21(foamGrid);
+        vec2 foamOffset = hash22(foamGrid + 99.0) * 0.8 - 0.4; // Extremely random positioning
+        
+        // Lifespan between 3s to 6s
+        float foamLifespan = mix(3.0, 6.0, hash21(foamGrid + 12.3)); 
+        float foamTimeOffset = hash21(foamGrid + 45.6) * 100.0;
+        float foamLife = fract((time + foamTimeOffset) / foamLifespan);
+        float foamFade = sin(foamLife * 3.1415926); // Smooth fade in and out
+        
+        // Shape into varying sized circles
+        float foamDist = length(foamFract - (0.5 + foamOffset));
+        float foamRadius = mix(0.1, 0.25, hash21(foamGrid + 78.9)); 
+        float foamCircle = smoothstep(foamRadius, foamRadius * 0.7, foamDist) * foamFade;
+        
+        // Map density so 0 = no foam, 1.0 = moderate foam covering
+        float foamAmount = mix(1.0, 0.9, foamDensity);
+        float foamSparkles = step(foamAmount, foamSeed) * foamCircle;
+
+        // Combine base color with white particles
+        // We use max to ensure white particles stay bright white
+        float totalParticles = max(sunSparkles, foamSparkles);
+        vec3 finalColor = albedo + vec3(totalParticles);
+
+        // Subtle transparency
+        gl_FragColor = vec4(finalColor, opacity);
     }
   `;
 
@@ -96,6 +194,7 @@ export function setupEnvironment(scene: THREE.Scene) {
 
   return {
     water,
+    waterUniforms,
     tick: (dt: number) => {
       water.material.uniforms['time'].value += dt;
     }

@@ -97,7 +97,36 @@ export async function startGame(shell: AppShell) {
     debugPanel.style.pointerEvents = "auto";
     shell.hud.appendChild(debugPanel);
 
-    function createSlider(label: string, min: number, max: number, step: number, value: number, onChange: (v: number) => void) {
+    function createFolder(title: string) {
+      const details = document.createElement("details");
+      details.style.marginBottom = "8px";
+      details.style.background = "rgba(0,0,0,0.2)";
+      details.style.borderRadius = "4px";
+      details.style.padding = "4px 8px";
+      details.open = false; // Collapsed by default to save room
+
+      const summary = document.createElement("summary");
+      summary.textContent = title;
+      summary.style.cursor = "pointer";
+      summary.style.fontWeight = "bold";
+      summary.style.fontSize = "13px";
+      summary.style.userSelect = "none";
+      details.appendChild(summary);
+
+      const content = document.createElement("div");
+      content.style.display = "flex";
+      content.style.flexDirection = "column";
+      content.style.gap = "8px";
+      content.style.marginTop = "8px";
+      content.style.paddingBottom = "4px";
+      details.appendChild(content);
+
+      debugPanel?.appendChild(details);
+      return { content, details };
+    }
+
+    function createSlider(label: string, min: number, max: number, step: number, value: number, onChange: (v: number) => void, parent: HTMLElement | null = debugPanel) {
+      if (!parent) return;
       const container = document.createElement("div");
       container.style.display = "flex";
       container.style.flexDirection = "column";
@@ -146,13 +175,52 @@ export async function startGame(shell: AppShell) {
       
       container.appendChild(topRow);
       container.appendChild(slider);
-      debugPanel!.appendChild(container);
+      parent.appendChild(container);
     }
 
-    createSlider("Move Speed", 1, 50, 1, moveSpeed, v => moveSpeed = v);
-    createSlider("Yaw Speed", 0.1, 5, 0.1, yawSpeed, v => yawSpeed = v);
-    createSlider("Mouse Sens", 0.001, 0.02, 0.001, mouseSensitivity, v => mouseSensitivity = v);
-    createSlider("Cam Dist Multi", 0.2, 3, 0.1, cameraDistMulti, v => cameraDistMulti = v);
+    function createColorPicker(label: string, initialHex: string, onChange: (v: string) => void, parent: HTMLElement | null = debugPanel) {
+      if (!parent) return;
+      const container = document.createElement("div");
+      container.style.display = "flex";
+      container.style.justifyContent = "space-between";
+      container.style.alignItems = "center";
+      
+      const labelEl = document.createElement("div");
+      labelEl.textContent = label;
+      labelEl.style.fontSize = "12px";
+      
+      const input = document.createElement("input");
+      input.type = "color";
+      input.value = initialHex;
+      input.style.width = "40px";
+      input.style.height = "20px";
+      input.style.padding = "0";
+      input.style.border = "none";
+      input.style.background = "transparent";
+      input.style.cursor = "pointer";
+      
+      input.oninput = () => onChange(input.value);
+      
+      container.appendChild(labelEl);
+      container.appendChild(input);
+      parent.appendChild(container);
+    }
+
+    const camFolder = createFolder("Camera & Movement");
+    camFolder.details.open = true; // Keep the first one open
+    createSlider("Move Speed", 1, 50, 1, moveSpeed, v => moveSpeed = v, camFolder.content);
+    createSlider("Yaw Speed", 0.1, 5, 0.1, yawSpeed, v => yawSpeed = v, camFolder.content);
+    createSlider("Mouse Sens", 0.001, 0.02, 0.001, mouseSensitivity, v => mouseSensitivity = v, camFolder.content);
+    createSlider("Cam Dist Multi", 0.2, 3, 0.1, cameraDistMulti, v => cameraDistMulti = v, camFolder.content);
+
+    const waterFolder = createFolder("Water Shader");
+    createColorPicker("Water Deep", "#" + env.waterUniforms.waterColor.value.getHexString(), v => env.waterUniforms.waterColor.value.set(v), waterFolder.content);
+    createColorPicker("Water Shallow", "#" + env.waterUniforms.skyColor.value.getHexString(), v => env.waterUniforms.skyColor.value.set(v), waterFolder.content);
+    createSlider("Water Opacity", 0.1, 1.0, 0.05, env.waterUniforms.opacity.value, v => env.waterUniforms.opacity.value = v, waterFolder.content);
+    createSlider("Normal Strength", 0.1, 10.0, 0.1, env.waterUniforms.normalStrength.value, v => env.waterUniforms.normalStrength.value = v, waterFolder.content);
+    createSlider("Fresnel Power", 0.1, 8.0, 0.1, env.waterUniforms.fresnelPower.value, v => env.waterUniforms.fresnelPower.value = v, waterFolder.content);
+    createSlider("Foam Particles", 0.0, 1.0, 0.05, env.waterUniforms.foamDensity.value, v => env.waterUniforms.foamDensity.value = v, waterFolder.content);
+    createSlider("Sun Sparkles", 0.0, 1.0, 0.05, env.waterUniforms.sunSparkleDensity.value, v => env.waterUniforms.sunSparkleDensity.value = v, waterFolder.content);
   }
 
   let mouseDeltaX = 0;
@@ -181,15 +249,19 @@ export async function startGame(shell: AppShell) {
   // then point the camera at origin.
   const subCenter = getVisualCenter(subGroup);
   subGroup.position.sub(subCenter);
+
+  const WATER_LEVEL = 8.0;
+  const SURFACE_OFFSET = 1.0; // Restored height so it sits comfortably like a boat!
+  
+  // Snap the submarine exactly to the water surface at start
+  subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
+
   const baseTarget = new THREE.Vector3(0, 0, 0);
 
   const camPos = new THREE.Vector3();
   const desired = new THREE.Vector3();
   const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
   const height = radius * 0.45;
-
-  const WATER_LEVEL = 8.0;
-  const SURFACE_OFFSET = 1.0; // Restored height so it sits comfortably like a boat!
 
   let raf = 0;
   let last = performance.now();
