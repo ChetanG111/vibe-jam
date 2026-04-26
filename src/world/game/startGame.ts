@@ -102,9 +102,30 @@ export async function startGame(shell: AppShell) {
       const container = document.createElement("div");
       container.style.display = "flex";
       container.style.flexDirection = "column";
+      container.style.gap = "4px";
+
+      const topRow = document.createElement("div");
+      topRow.style.display = "flex";
+      topRow.style.justifyContent = "space-between";
+      topRow.style.alignItems = "center";
+
       const labelEl = document.createElement("div");
-      labelEl.textContent = `${label}: ${value}`;
+      labelEl.textContent = label;
       labelEl.style.fontSize = "12px";
+      
+      const numInput = document.createElement("input");
+      numInput.type = "number";
+      numInput.step = step.toString();
+      numInput.value = value.toString();
+      numInput.style.width = "60px";
+      numInput.style.fontSize = "12px";
+      numInput.style.background = "rgba(255,255,255,0.1)";
+      numInput.style.color = "white";
+      numInput.style.border = "1px solid rgba(255,255,255,0.3)";
+      numInput.style.borderRadius = "4px";
+
+      topRow.appendChild(labelEl);
+      topRow.appendChild(numInput);
       
       const slider = document.createElement("input");
       slider.type = "range";
@@ -113,13 +134,18 @@ export async function startGame(shell: AppShell) {
       slider.step = step.toString();
       slider.value = value.toString();
       
-      slider.oninput = () => {
-        const v = parseFloat(slider.value);
-        labelEl.textContent = `${label}: ${v}`;
-        onChange(v);
+      const updateValue = (v: number) => {
+        if (!Number.isNaN(v)) {
+          slider.value = v.toString();
+          numInput.value = v.toString();
+          onChange(v);
+        }
       };
+
+      slider.oninput = () => updateValue(parseFloat(slider.value));
+      numInput.onchange = () => updateValue(parseFloat(numInput.value));
       
-      container.appendChild(labelEl);
+      container.appendChild(topRow);
       container.appendChild(slider);
       debugPanel!.appendChild(container);
     }
