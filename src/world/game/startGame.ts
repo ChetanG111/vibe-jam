@@ -18,19 +18,12 @@ export async function startGame(shell: AppShell) {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x82a1b1, 0.012); // Lighter fog
-
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
 
-  const depthRenderTarget = new THREE.WebGLRenderTarget(1, 1);
-  depthRenderTarget.texture.minFilter = THREE.NearestFilter;
-  depthRenderTarget.texture.magFilter = THREE.NearestFilter;
-  depthRenderTarget.depthTexture = new THREE.DepthTexture(1, 1);
-  depthRenderTarget.depthTexture.type = THREE.UnsignedShortType;
-
-  const env = setupEnvironment(scene, camera, depthRenderTarget.depthTexture);
+  const env = setupEnvironment(scene);
 
   const subGroup = new THREE.Group();
-  subGroup.position.set(0, 0, 0);
+  subGroup.position.set(0, 9.0, 0); // Start at surface
   scene.add(subGroup);
 
   await loadSubmarine(subGroup);
@@ -176,8 +169,6 @@ export async function startGame(shell: AppShell) {
     renderer.setSize(w, h, true);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    depthRenderTarget.setSize(w, h);
-    env.resize(w, h);
   };
   renderer.domElement.style.display = "block";
   renderer.domElement.style.width = "100%";
@@ -196,6 +187,9 @@ export async function startGame(shell: AppShell) {
   const desired = new THREE.Vector3();
   const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
   const height = radius * 0.45;
+
+  const WATER_LEVEL = 8.0;
+  const SURFACE_OFFSET = 1.0; // Restored height so it sits comfortably like a boat!
 
   let raf = 0;
   let last = performance.now();
@@ -237,13 +231,11 @@ export async function startGame(shell: AppShell) {
     subGroup.position.y += moveY;
     
     // Phase 2: Restrict flying above water level
-    const WATER_LEVEL = 8.0;
-    if (subGroup.position.y > WATER_LEVEL) {
-      subGroup.position.y = WATER_LEVEL;
+    if (subGroup.position.y > WATER_LEVEL + SURFACE_OFFSET) {
+      subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
     }
-
+    
     subGroup.position.z += moveZ;
-
     env.tick(dt);
 
     // Follow target
@@ -256,14 +248,6 @@ export async function startGame(shell: AppShell) {
     camera.position.copy(camPos);
     camera.lookAt(baseTarget);
 
-    // Depth Pass
-    env.water.visible = false;
-    renderer.setRenderTarget(depthRenderTarget);
-    renderer.render(scene, camera);
-    
-    // Main Pass
-    env.water.visible = true;
-    renderer.setRenderTarget(null);
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
