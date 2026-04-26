@@ -1,0 +1,22 @@
+{
+  "name": "vibe-jam",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Black Sea Contracts (vibe-jam) - editor-first Three.js web game",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prebuild": "node scripts/check-model-budgets.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
