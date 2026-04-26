@@ -162,6 +162,7 @@ function buildModelPreview(model: ProceduralModel) {
   holder.add(proceduralObj);
 
   let gltfObj: THREE.Object3D | null = null;
+  let objObj: THREE.Object3D | null = null;
 
   const resize = () => {
     const w = host.clientWidth;
@@ -201,6 +202,8 @@ function buildModelPreview(model: ProceduralModel) {
       try {
         const gltf = await loader.loadAsync(url);
         if (gltfObj) holder.remove(gltfObj);
+        if (objObj) holder.remove(objObj);
+        objObj = null;
         gltfObj = gltf.scene;
         gltfObj.position.set(0, 0, 0);
         gltfObj.scale.setScalar(1);
@@ -209,10 +212,37 @@ function buildModelPreview(model: ProceduralModel) {
         URL.revokeObjectURL(url);
       }
     },
-    clearGltf() {
-      if (!gltfObj) return;
-      holder.remove(gltfObj);
+    async loadObjFromFile(file: File) {
+      const { OBJLoader } = await import("three/examples/jsm/loaders/OBJLoader.js");
+      const loader = new OBJLoader();
+      const text = await file.text();
+      const obj = loader.parse(text);
+      obj.traverse((child: any) => {
+        if (child && child.isMesh) {
+          child.material = new THREE.MeshStandardMaterial({
+            color: 0x9bd7ff,
+            roughness: 0.9,
+            metalness: 0.05,
+          });
+        }
+      });
+      if (gltfObj) holder.remove(gltfObj);
       gltfObj = null;
+      if (objObj) holder.remove(objObj);
+      objObj = obj;
+      objObj.position.set(0, 0, 0);
+      objObj.scale.setScalar(1);
+      holder.add(objObj);
+    },
+    clearGltf() {
+      if (gltfObj) {
+        holder.remove(gltfObj);
+        gltfObj = null;
+      }
+      if (objObj) {
+        holder.remove(objObj);
+        objObj = null;
+      }
     },
     dispose() {
       cancelAnimationFrame(raf);
@@ -287,29 +317,37 @@ function buildInspector(
     );
   }
 
-  wrap.appendChild(sectionTitle("glTF Preview (local file)"));
+  wrap.appendChild(sectionTitle("glTF/OBJ Preview (local file)"));
   const gltfHint = document.createElement("div");
   gltfHint.style.fontSize = "12px";
   gltfHint.style.color = "var(--muted)";
   gltfHint.textContent =
-    "Load a local .glb/.gltf to preview. To ship a model, add it under src/assets/models/ and keep within budgets (default 250 KB each, 2 MB total).";
+    "Load a local .glb/.gltf or .obj to preview. To ship a model, add optimized .glb/.gltf under src/assets/models/ and keep within budgets (default 250 KB each, 2 MB total).";
   wrap.appendChild(gltfHint);
 
   const file = document.createElement("input");
   file.type = "file";
-  file.accept = ".glb,.gltf";
+  file.accept = ".glb,.gltf,.obj";
   file.addEventListener("change", async () => {
     status.replaceChildren();
     const f = file.files?.[0];
     if (!f) return;
-    if (f.size > pack.budgets.maxPerFileBytes) {
-      status.appendChild(
-        msg("error", `File is ${formatBytes(f.size)} (max ${formatBytes(pack.budgets.maxPerFileBytes)}).`),
-      );
-      return;
-    }
     try {
-      await previewApi.loadGltfFromFile(f);
+      const lower = f.name.toLowerCase();
+      if (lower.endsWith(".glb") || lower.endsWith(".gltf")) {
+        if (f.size > pack.budgets.maxPerFileBytes) {
+          status.appendChild(
+            msg("error", `File is ${formatBytes(f.size)} (max ${formatBytes(pack.budgets.maxPerFileBytes)}).`),
+          );
+          return;
+        }
+        await previewApi.loadGltfFromFile(f);
+      } else if (lower.endsWith(".obj")) {
+        await previewApi.loadObjFromFile(f);
+      } else {
+        status.appendChild(msg("error", "Unsupported file type."));
+        return;
+      }
       status.appendChild(msg("ok", "Loaded into preview."));
     } catch (e: any) {
       status.appendChild(msg("error", e?.message ? String(e.message) : "Failed to load glTF"));
