@@ -1,29 +1,23 @@
 import * as THREE from "three";
+import { createOceanFloor } from "./terrain";
 
 export function setupEnvironment(scene: THREE.Scene) {
-  const ambient = new THREE.AmbientLight(0x7aa2ff, 0.4);
+  // Total Darkness: Removing or zeroing out global lights
+  const ambient = new THREE.AmbientLight(0x0a1020, 0.02); // Just a tiny hint so you aren't 100% blind without light
   scene.add(ambient);
 
-  const key = new THREE.DirectionalLight(0xfff5e6, 1.2);
-  key.position.set(100, 50, -50);
-  scene.add(key);
+  const terrain = createOceanFloor({
+    size: 2000,
+    segments: 250, // Matches screenshot
+    heightScale: 70, // Matches screenshot
+    noiseScale: 0.008, // Matches screenshot
+  });
+  
+  terrain.mesh.position.y = -97; // Matches screenshot
+  scene.add(terrain.mesh);
 
-  const rim = new THREE.DirectionalLight(0x6ee7ff, 0.35);
-  rim.position.set(-20, 14, -25);
-  scene.add(rim);
+  scene.fog = new THREE.FogExp2(0x020408, 0.015); // Dark abyss fog
 
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(2000, 2000, 1, 1),
-    new THREE.MeshStandardMaterial({
-      color: 0x0a1020,
-      metalness: 0.0,
-      roughness: 1.0,
-    }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -18;
-  floor.name = "oceanFloor"; // Tag for hiding
-  scene.add(floor);
 
   // Custom Cartoon Water Shader
   const waterGeometry = new THREE.PlaneGeometry(2000, 2000, 128, 128); // more segments for vertex waves
@@ -195,6 +189,7 @@ export function setupEnvironment(scene: THREE.Scene) {
   return {
     water,
     waterUniforms,
+    terrain,
     tick: (dt: number) => {
       water.material.uniforms['time'].value += dt;
     }

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { AppShell } from "../../shell/gameShell";
 import { setupEnvironment } from "./environment";
-import { loadSubmarine } from "./submarine";
+import { loadSubmarine, SubmarineModelType } from "./submarine";
 import { getCameraDistanceForObject, getVisualCenter } from "./cameraUtils";
 
 export async function startGame(shell: AppShell) {
@@ -13,25 +13,61 @@ export async function startGame(shell: AppShell) {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0x82a1b1, 1); // Hazy sky color
+  renderer.setClearColor(0x020408, 1); 
   shell.canvasHost.replaceChildren(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x82a1b1, 0.012); // Lighter fog
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 800);
+  camera.layers.enable(0);
+  camera.layers.enable(1); 
 
   const env = setupEnvironment(scene);
 
   const subGroup = new THREE.Group();
-  subGroup.position.set(0, 9.0, 0); // Start at surface
+  subGroup.position.set(0, 9.0, 0); 
   scene.add(subGroup);
 
-  await loadSubmarine(subGroup);
+  // --- Hero Lighting (Submarine visibility) ---
+  const heroLight = new THREE.DirectionalLight(0xffffff, 5.0);
+  heroLight.layers.set(1);
+  camera.add(heroLight);
+  scene.add(camera);
 
-  let yaw = Math.PI; // Position camera behind the sub
+  const heroAmbient = new THREE.AmbientLight(0xffffff, 1.0);
+  heroAmbient.layers.set(1);
+  scene.add(heroAmbient);
+
+  // --- Submarine Headlight ---
+  const headLight = new THREE.SpotLight(0xfff5e6, 2000.0, 400, 1.0, 0.2, 1);
+  headLight.position.set(0, 0, 5.5); // Moved further forward to clear the new GLB nose
+  const lightTarget = new THREE.Object3D();
+  lightTarget.position.set(0, 0, 20);
+  subGroup.add(headLight);
+  subGroup.add(lightTarget);
+  headLight.target = lightTarget;
+
+  // --- Model Container ---
+  // We put the model in its own group so we can clear it without deleting lights
+  const modelGroup = new THREE.Group();
+  subGroup.add(modelGroup);
+
+  // Initial Load
+  const updateModelLayers = () => {
+    modelGroup.traverse(child => {
+      child.layers.set(1);
+    });
+    // Ensure the headlight (which is a sibling) stays on both layers
+    headLight.layers.enable(0);
+    headLight.layers.enable(1);
+  };
+
+  await loadSubmarine(modelGroup, "glb");
+  updateModelLayers();
+
+  let yaw = Math.PI; 
   let yawVel = 0;
-  let yawSpeed = 0.25; // rad/s
-  let moveSpeed = 5.0; // units/s
+  let yawSpeed = 0.25; 
+  let moveSpeed = 8.0; 
   let mouseSensitivity = 0.005;
   let cameraDistMulti = 0.9;
 
@@ -56,31 +92,6 @@ export async function startGame(shell: AppShell) {
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
-  // UI for Mouse Control Toggle
-  let mouseLookActive = false;
-  // Mouse look toggle disabled for now
-  /*
-  const mouseToggle = document.createElement("button");
-  mouseToggle.className = "btn";
-  mouseToggle.style.position = "absolute";
-  mouseToggle.style.right = "16px";
-  mouseToggle.style.top = "16px";
-  mouseToggle.style.pointerEvents = "auto";
-  mouseToggle.textContent = "Mouse Look: OFF";
-  shell.hud.appendChild(mouseToggle);
-
-  mouseToggle.onclick = () => {
-    mouseLookActive = !mouseLookActive;
-    mouseToggle.textContent = `Mouse Look: ${mouseLookActive ? "ON" : "OFF"}`;
-    mouseToggle.classList.toggle("primary", mouseLookActive);
-    if (mouseLookActive) {
-      shell.canvasHost.requestPointerLock?.();
-    } else {
-      document.exitPointerLock?.();
-    }
-  };
-  */
-
   let debugPanel: HTMLDivElement | null = null;
   if (import.meta.env.DEV) {
     debugPanel = document.createElement("div");
@@ -95,6 +106,8 @@ export async function startGame(shell: AppShell) {
     debugPanel.style.flexDirection = "column";
     debugPanel.style.gap = "8px";
     debugPanel.style.pointerEvents = "auto";
+    debugPanel.style.maxHeight = "80vh";
+    debugPanel.style.overflowY = "auto";
     shell.hud.appendChild(debugPanel);
 
     function createFolder(title: string) {
@@ -103,8 +116,7 @@ export async function startGame(shell: AppShell) {
       details.style.background = "rgba(0,0,0,0.2)";
       details.style.borderRadius = "4px";
       details.style.padding = "4px 8px";
-      details.open = false; // Collapsed by default to save room
-
+      details.open = false;
       const summary = document.createElement("summary");
       summary.textContent = title;
       summary.style.cursor = "pointer";
@@ -112,7 +124,6 @@ export async function startGame(shell: AppShell) {
       summary.style.fontSize = "13px";
       summary.style.userSelect = "none";
       details.appendChild(summary);
-
       const content = document.createElement("div");
       content.style.display = "flex";
       content.style.flexDirection = "column";
@@ -120,7 +131,6 @@ export async function startGame(shell: AppShell) {
       content.style.marginTop = "8px";
       content.style.paddingBottom = "4px";
       details.appendChild(content);
-
       debugPanel?.appendChild(details);
       return { content, details };
     }
@@ -131,16 +141,13 @@ export async function startGame(shell: AppShell) {
       container.style.display = "flex";
       container.style.flexDirection = "column";
       container.style.gap = "4px";
-
       const topRow = document.createElement("div");
       topRow.style.display = "flex";
       topRow.style.justifyContent = "space-between";
       topRow.style.alignItems = "center";
-
       const labelEl = document.createElement("div");
       labelEl.textContent = label;
       labelEl.style.fontSize = "12px";
-      
       const numInput = document.createElement("input");
       numInput.type = "number";
       numInput.step = step.toString();
@@ -151,17 +158,14 @@ export async function startGame(shell: AppShell) {
       numInput.style.color = "white";
       numInput.style.border = "1px solid rgba(255,255,255,0.3)";
       numInput.style.borderRadius = "4px";
-
       topRow.appendChild(labelEl);
       topRow.appendChild(numInput);
-      
       const slider = document.createElement("input");
       slider.type = "range";
       slider.min = min.toString();
       slider.max = max.toString();
       slider.step = step.toString();
       slider.value = value.toString();
-      
       const updateValue = (v: number) => {
         if (!Number.isNaN(v)) {
           slider.value = v.toString();
@@ -169,67 +173,66 @@ export async function startGame(shell: AppShell) {
           onChange(v);
         }
       };
-
       slider.oninput = () => updateValue(parseFloat(slider.value));
       numInput.onchange = () => updateValue(parseFloat(numInput.value));
-      
       container.appendChild(topRow);
       container.appendChild(slider);
       parent.appendChild(container);
     }
 
-    function createColorPicker(label: string, initialHex: string, onChange: (v: string) => void, parent: HTMLElement | null = debugPanel) {
-      if (!parent) return;
-      const container = document.createElement("div");
-      container.style.display = "flex";
-      container.style.justifyContent = "space-between";
-      container.style.alignItems = "center";
-      
-      const labelEl = document.createElement("div");
-      labelEl.textContent = label;
-      labelEl.style.fontSize = "12px";
-      
-      const input = document.createElement("input");
-      input.type = "color";
-      input.value = initialHex;
-      input.style.width = "40px";
-      input.style.height = "20px";
-      input.style.padding = "0";
-      input.style.border = "none";
-      input.style.background = "transparent";
-      input.style.cursor = "pointer";
-      
-      input.oninput = () => onChange(input.value);
-      
-      container.appendChild(labelEl);
-      container.appendChild(input);
-      parent.appendChild(container);
-    }
+    const modelFolder = createFolder("Submarine Model");
+    modelFolder.details.open = true;
+    const modelSelect = document.createElement("select");
+    modelSelect.style.background = "rgba(255,255,255,0.1)";
+    modelSelect.style.color = "white";
+    modelSelect.style.border = "1px solid rgba(255,255,255,0.3)";
+    modelSelect.style.borderRadius = "4px";
+    modelSelect.style.padding = "4px";
+    modelSelect.style.fontSize = "12px";
+    
+    const options: {label: string, value: SubmarineModelType}[] = [
+      { label: "Low-Poly GLB", value: "glb_lowpoly" },
+      { label: "Type XXI GLB", value: "glb_type_xxi" },
+      { label: "Seaview OBJ", value: "obj" },
+      { label: "Procedural", value: "procedural" },
+    ];
+    
+    options.forEach(opt => {
+      const el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.label;
+      modelSelect.appendChild(el);
+    });
+    
+    modelSelect.onchange = async () => {
+      await loadSubmarine(modelGroup, modelSelect.value as SubmarineModelType);
+      updateModelLayers();
+    };
+    modelFolder.content.appendChild(modelSelect);
 
     const camFolder = createFolder("Camera & Movement");
-    camFolder.details.open = true; // Keep the first one open
     createSlider("Move Speed", 1, 50, 1, moveSpeed, v => moveSpeed = v, camFolder.content);
     createSlider("Yaw Speed", 0.1, 5, 0.1, yawSpeed, v => yawSpeed = v, camFolder.content);
-    createSlider("Mouse Sens", 0.001, 0.02, 0.001, mouseSensitivity, v => mouseSensitivity = v, camFolder.content);
     createSlider("Cam Dist Multi", 0.2, 3, 0.1, cameraDistMulti, v => cameraDistMulti = v, camFolder.content);
 
-    const waterFolder = createFolder("Water Shader");
-    createColorPicker("Water Deep", "#" + env.waterUniforms.waterColor.value.getHexString(), v => env.waterUniforms.waterColor.value.set(v), waterFolder.content);
-    createColorPicker("Water Shallow", "#" + env.waterUniforms.skyColor.value.getHexString(), v => env.waterUniforms.skyColor.value.set(v), waterFolder.content);
-    createSlider("Water Opacity", 0.1, 1.0, 0.05, env.waterUniforms.opacity.value, v => env.waterUniforms.opacity.value = v, waterFolder.content);
-    createSlider("Normal Strength", 0.1, 10.0, 0.1, env.waterUniforms.normalStrength.value, v => env.waterUniforms.normalStrength.value = v, waterFolder.content);
-    createSlider("Fresnel Power", 0.1, 8.0, 0.1, env.waterUniforms.fresnelPower.value, v => env.waterUniforms.fresnelPower.value = v, waterFolder.content);
-    createSlider("Foam Particles", 0.0, 1.0, 0.05, env.waterUniforms.foamDensity.value, v => env.waterUniforms.foamDensity.value = v, waterFolder.content);
-    createSlider("Sun Sparkles", 0.0, 1.0, 0.05, env.waterUniforms.sunSparkleDensity.value, v => env.waterUniforms.sunSparkleDensity.value = v, waterFolder.content);
+    const terrainFolder = createFolder("Ocean Floor (Low Poly Tuning)");
+    const opts = env.terrain.options;
+    createSlider("Number of Faces (Detail)", 4, 300, 2, opts.segments, v => env.terrain.regenerate({ segments: v }), terrainFolder.content);
+    createSlider("Noise Scale", 0.001, 0.05, 0.001, opts.noiseScale, v => env.terrain.regenerate({ noiseScale: v }), terrainFolder.content);
+    createSlider("Height Scale", 5, 150, 5, opts.heightScale, v => env.terrain.regenerate({ heightScale: v }), terrainFolder.content);
+    createSlider("Floor Depth", -200, 0, 1, env.terrain.mesh.position.y, v => env.terrain.mesh.position.y = v, terrainFolder.content);
+    createSlider("Edge Sharpness", 0, 1.0, 0.05, env.terrain.wireMat.opacity, v => env.terrain.wireMat.opacity = v, terrainFolder.content);
+    
+    const lightFolder = createFolder("Submarine Lights");
+    createSlider("Headlight Intensity", 0, 3000, 10, headLight.intensity, v => headLight.intensity = v, lightFolder.content);
+    createSlider("Sub visibility (Hero Light)", 0, 10, 0.1, heroLight.intensity, v => {
+      heroLight.intensity = v;
+      heroAmbient.intensity = v * 0.2;
+    }, lightFolder.content);
+    createSlider("Wideness (Angle)", 0.1, 1.5, 0.05, headLight.angle, v => headLight.angle = v, lightFolder.content);
+    createSlider("Focus (Penumbra)", 0, 1, 0.05, headLight.penumbra, v => headLight.penumbra = v, lightFolder.content);
+    createSlider("Range (Distance)", 10, 600, 10, headLight.distance, v => headLight.distance = v, lightFolder.content);
   }
-
-  let mouseDeltaX = 0;
-  const onMouseMove = (ev: MouseEvent) => {
-    if (mouseLookActive) {
-      mouseDeltaX += ev.movementX;
-    }
-  };
-  window.addEventListener("mousemove", onMouseMove);
 
   const resize = () => {
     const w = Math.max(shell.canvasHost.clientWidth, 1);
@@ -245,19 +248,14 @@ export async function startGame(shell: AppShell) {
   ro.observe(shell.canvasHost);
   resize();
 
-  // "Perfect" centering: move the group so its bounding center is at origin,
-  // then point the camera at origin.
   const subCenter = getVisualCenter(subGroup);
   subGroup.position.sub(subCenter);
 
   const WATER_LEVEL = 8.0;
-  const SURFACE_OFFSET = 1.0; // Restored height so it sits comfortably like a boat!
-  
-  // Snap the submarine exactly to the water surface at start
+  const SURFACE_OFFSET = 1.0; 
   subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
 
   const baseTarget = new THREE.Vector3(0, 0, 0);
-
   const camPos = new THREE.Vector3();
   const desired = new THREE.Vector3();
   const radius = getCameraDistanceForObject(camera, subGroup, baseTarget);
@@ -269,57 +267,39 @@ export async function startGame(shell: AppShell) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
-
-    // Unified Camera Orbit & Submarine Rotation
     const orbitDir = (keyState.q ? 1 : 0) - (keyState.e ? 1 : 0);
     const desiredYawVel = orbitDir * yawSpeed;
     yawVel = THREE.MathUtils.lerp(yawVel, desiredYawVel, 1 - Math.exp(-dt * 14));
-    
-    // Update yaw from keyboard and mouse
     yaw += yawVel * dt;
-    if (mouseLookActive) {
-      yaw -= mouseDeltaX * mouseSensitivity;
-      mouseDeltaX = 0;
-    }
-
-    // Submarine always faces away from the camera (forward into the view)
     const targetSubRotation = yaw + Math.PI;
     let diff = targetSubRotation - subGroup.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     subGroup.rotation.y += diff * (1 - Math.exp(-dt * 10));
-
-    // Movement
     const forward = (keyState.w ? 1 : 0) - (keyState.s ? 1 : 0);
     const side = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
     const up = (keyState[" "] ? 1 : 0) - (keyState.shift ? 1 : 0);
-
-    // Always move relative to camera yaw
     const moveX = (Math.cos(yaw) * side - Math.sin(yaw) * forward) * moveSpeed * dt;
     const moveZ = (Math.sin(yaw) * -side - Math.cos(yaw) * forward) * moveSpeed * dt;
     const moveY = up * moveSpeed * dt;
-
     subGroup.position.x += moveX;
     subGroup.position.y += moveY;
-    
-    // Phase 2: Restrict flying above water level
     if (subGroup.position.y > WATER_LEVEL + SURFACE_OFFSET) {
       subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
     }
-    
+    const floorY = env.terrain.getHeight(subGroup.position.x, subGroup.position.z) + env.terrain.mesh.position.y;
+    const minHeight = floorY + 1.2; 
+    if (subGroup.position.y < minHeight) {
+      subGroup.position.y = minHeight;
+    }
     subGroup.position.z += moveZ;
     env.tick(dt);
-
-    // Follow target
     baseTarget.copy(subGroup.position);
-
-    const actualRadius = radius * cameraDistMulti; // Closer view
+    const actualRadius = radius * cameraDistMulti;
     desired.set(Math.sin(yaw) * actualRadius, height * 0.7, Math.cos(yaw) * actualRadius).add(baseTarget);
     camPos.lerp(desired, 1 - Math.exp(-dt * 6));
-
     camera.position.copy(camPos);
     camera.lookAt(baseTarget);
-
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
@@ -329,11 +309,8 @@ export async function startGame(shell: AppShell) {
     ro.disconnect();
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", onKeyUp);
-    window.removeEventListener("mousemove", onMouseMove);
-    // mouseToggle.remove(); // Disabled
     if (debugPanel) debugPanel.remove();
     renderer.dispose();
     shell.canvasHost.innerHTML = "";
   };
 }
-
