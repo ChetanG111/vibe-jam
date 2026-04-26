@@ -1,11 +1,12 @@
 import * as THREE from "three";
+import { Water } from "three/examples/jsm/objects/Water.js";
 
 export function setupEnvironment(scene: THREE.Scene) {
-  const ambient = new THREE.AmbientLight(0x7aa2ff, 0.22);
+  const ambient = new THREE.AmbientLight(0x7aa2ff, 0.4);
   scene.add(ambient);
 
-  const key = new THREE.DirectionalLight(0x9bd7ff, 0.9);
-  key.position.set(25, 35, 15);
+  const key = new THREE.DirectionalLight(0xfff5e6, 1.2);
+  key.position.set(100, 50, -50);
   scene.add(key);
 
   const rim = new THREE.DirectionalLight(0x6ee7ff, 0.35);
@@ -13,7 +14,7 @@ export function setupEnvironment(scene: THREE.Scene) {
   scene.add(rim);
 
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(800, 800, 1, 1),
+    new THREE.PlaneGeometry(2000, 2000, 1, 1),
     new THREE.MeshStandardMaterial({
       color: 0x0a1020,
       metalness: 0.0,
@@ -24,22 +25,34 @@ export function setupEnvironment(scene: THREE.Scene) {
   floor.position.y = -18;
   scene.add(floor);
 
-  // "Water surface" just for visual reference in this step (no depth caps yet).
-  const water = new THREE.Mesh(
-    new THREE.PlaneGeometry(800, 800, 1, 1),
-    new THREE.MeshStandardMaterial({
-      color: 0x0b2a3a,
-      metalness: 0.0,
-      roughness: 0.15,
-      transparent: true,
-      opacity: 0.18,
-    }),
+  // Advanced Water surface
+  const waterGeometry = new THREE.PlaneGeometry(2000, 2000);
+  const water = new Water(
+    waterGeometry,
+    {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals: new THREE.TextureLoader().load('/waternormals.jpg', function (texture) {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      }),
+      sunDirection: key.position.clone().normalize(),
+      sunColor: 0xffffff,
+      waterColor: 0x072338,
+      distortionScale: 3.7,
+      fog: scene.fog !== undefined
+    }
   );
   water.rotation.x = -Math.PI / 2;
   water.position.y = 8;
   scene.add(water);
 
   addRandomProps(scene);
+  
+  return {
+    tick: (dt: number) => {
+      water.material.uniforms['time'].value += dt * 0.5;
+    }
+  };
 }
 
 export function addRandomProps(scene: THREE.Scene) {

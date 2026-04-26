@@ -13,15 +13,15 @@ export async function startGame(shell: AppShell) {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0x070a0f, 1);
+  renderer.setClearColor(0x82a1b1, 1); // Hazy sky color
   shell.canvasHost.replaceChildren(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x070a0f, 0.03);
+  scene.fog = new THREE.FogExp2(0x82a1b1, 0.012); // Lighter fog
 
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
 
-  setupEnvironment(scene);
+  const env = setupEnvironment(scene);
 
   const subGroup = new THREE.Group();
   subGroup.position.set(0, 0, 0);
@@ -228,6 +228,8 @@ export async function startGame(shell: AppShell) {
     subGroup.position.x += moveX;
     subGroup.position.y += moveY;
     subGroup.position.z += moveZ;
+
+    env.tick(dt);
 
     // Follow target
     baseTarget.copy(subGroup.position);
