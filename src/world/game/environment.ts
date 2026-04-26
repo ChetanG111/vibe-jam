@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { createOceanFloor } from "./terrain";
+import { createOceanFloor, createRockFormations } from "./terrain";
 
 export function setupEnvironment(scene: THREE.Scene) {
   // Total Darkness: Removing or zeroing out global lights
-  const ambient = new THREE.AmbientLight(0x0a1020, 0.02); // Just a tiny hint so you aren't 100% blind without light
+  const ambient = new THREE.AmbientLight(0xffffff, 0.3); // Increased for debugging
   scene.add(ambient);
 
   const terrain = createOceanFloor({
@@ -12,11 +12,21 @@ export function setupEnvironment(scene: THREE.Scene) {
     heightScale: 70, // Matches screenshot
     noiseScale: 0.008, // Matches screenshot
   });
-  
+
   terrain.mesh.position.y = -97; // Matches screenshot
   scene.add(terrain.mesh);
 
-  scene.fog = new THREE.FogExp2(0x020408, 0.015); // Dark abyss fog
+  const rocks = createRockFormations({
+    count: 800,
+    range: 2000,
+    minSize: 6,
+    maxSize: 25,
+    randomness: 0.3
+  });
+  rocks.name = "rockGroup";
+  scene.add(rocks);
+
+  scene.fog = new THREE.FogExp2(0x020408, 0.005); // Lighter fog for visibility
 
 
   // Custom Cartoon Water Shader
@@ -31,12 +41,14 @@ export function setupEnvironment(scene: THREE.Scene) {
     foamDensity: { value: 0.1 },
     sunSparkleDensity: { value: 0.8 },
     sunDir: { value: new THREE.Vector3(0.5, 0.8, -0.2).normalize() },
-    tNormal: { value: (() => {
-      const tex = new THREE.TextureLoader().load('/waternormals.jpg');
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      return tex;
-    })() },
+    tNormal: {
+      value: (() => {
+        const tex = new THREE.TextureLoader().load('/waternormals.jpg');
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      })()
+    },
   };
 
   const waterVertexShader = `
@@ -183,8 +195,6 @@ export function setupEnvironment(scene: THREE.Scene) {
   water.rotation.x = -Math.PI / 2;
   water.position.y = 8;
   scene.add(water);
-
-  addRandomProps(scene);
 
   return {
     water,

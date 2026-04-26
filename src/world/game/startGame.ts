@@ -3,6 +3,8 @@ import type { AppShell } from "../../shell/gameShell";
 import { setupEnvironment } from "./environment";
 import { loadSubmarine, SubmarineModelType } from "./submarine";
 import { getCameraDistanceForObject, getVisualCenter } from "./cameraUtils";
+import { createRockFormations } from "./terrain";
+// import { createVolumetricBeam } from "./lightUtils";
 
 export async function startGame(shell: AppShell) {
   shell.setHudChips([
@@ -11,20 +13,32 @@ export async function startGame(shell: AppShell) {
   ]);
   shell.setHint("WASD to move. Space/Shift for depth. Q/E to orbit.");
 
+  // --- Underwater Overlay (Screen Tint) ---
+  const overlay = document.createElement("div");
+  overlay.id = "underwater-overlay";
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.background = "radial-gradient(circle, rgba(0, 40, 80, 0.0) 0%, rgba(0, 20, 40, 0.6) 100%)";
+  overlay.style.backgroundColor = "rgba(0, 60, 120, 0.15)";
+  overlay.style.opacity = "0";
+  overlay.style.transition = "opacity 0.1s linear"; // We'll update manually for smoother lerp
+  shell.hud.appendChild(overlay);
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setClearColor(0x020408, 1); 
+  renderer.setClearColor(0x020408, 1);
   shell.canvasHost.replaceChildren(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 800);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1200);
   camera.layers.enable(0);
-  camera.layers.enable(1); 
+  camera.layers.enable(1);
 
   const env = setupEnvironment(scene);
 
   const subGroup = new THREE.Group();
-  subGroup.position.set(0, 9.0, 0); 
+  subGroup.position.set(0, 9.0, 0);
   scene.add(subGroup);
 
   // --- Hero Lighting (Submarine visibility) ---
@@ -46,6 +60,13 @@ export async function startGame(shell: AppShell) {
   subGroup.add(lightTarget);
   headLight.target = lightTarget;
 
+  /*
+  // --- Volumetric Beam ---
+  const { beam, update: updateBeam } = createVolumetricBeam(headLight);
+  subGroup.add(beam);
+  beam.position.copy(headLight.position);
+  */
+
   // --- Model Container ---
   // We put the model in its own group so we can clear it without deleting lights
   const modelGroup = new THREE.Group();
@@ -61,13 +82,13 @@ export async function startGame(shell: AppShell) {
     headLight.layers.enable(1);
   };
 
-  await loadSubmarine(modelGroup, "glb");
+  await loadSubmarine(modelGroup, "glb_lowpoly");
   updateModelLayers();
 
-  let yaw = Math.PI; 
+  let yaw = Math.PI;
   let yawVel = 0;
-  let yawSpeed = 0.25; 
-  let moveSpeed = 8.0; 
+  let yawSpeed = 0.25;
+  let moveSpeed = 8.0;
   let mouseSensitivity = 0.005;
   let cameraDistMulti = 0.9;
 
@@ -189,21 +210,21 @@ export async function startGame(shell: AppShell) {
     modelSelect.style.borderRadius = "4px";
     modelSelect.style.padding = "4px";
     modelSelect.style.fontSize = "12px";
-    
-    const options: {label: string, value: SubmarineModelType}[] = [
+
+    const options: { label: string, value: SubmarineModelType }[] = [
       { label: "Low-Poly GLB", value: "glb_lowpoly" },
       { label: "Type XXI GLB", value: "glb_type_xxi" },
       { label: "Seaview OBJ", value: "obj" },
       { label: "Procedural", value: "procedural" },
     ];
-    
+
     options.forEach(opt => {
       const el = document.createElement("option");
       el.value = opt.value;
       el.textContent = opt.label;
       modelSelect.appendChild(el);
     });
-    
+
     modelSelect.onchange = async () => {
       await loadSubmarine(modelGroup, modelSelect.value as SubmarineModelType);
       updateModelLayers();
@@ -222,7 +243,7 @@ export async function startGame(shell: AppShell) {
     createSlider("Height Scale", 5, 150, 5, opts.heightScale, v => env.terrain.regenerate({ heightScale: v }), terrainFolder.content);
     createSlider("Floor Depth", -200, 0, 1, env.terrain.mesh.position.y, v => env.terrain.mesh.position.y = v, terrainFolder.content);
     createSlider("Edge Sharpness", 0, 1.0, 0.05, env.terrain.wireMat.opacity, v => env.terrain.wireMat.opacity = v, terrainFolder.content);
-    
+
     const lightFolder = createFolder("Submarine Lights");
     createSlider("Headlight Intensity", 0, 3000, 10, headLight.intensity, v => headLight.intensity = v, lightFolder.content);
     createSlider("Sub visibility (Hero Light)", 0, 10, 0.1, heroLight.intensity, v => {
@@ -232,6 +253,36 @@ export async function startGame(shell: AppShell) {
     createSlider("Wideness (Angle)", 0.1, 1.5, 0.05, headLight.angle, v => headLight.angle = v, lightFolder.content);
     createSlider("Focus (Penumbra)", 0, 1, 0.05, headLight.penumbra, v => headLight.penumbra = v, lightFolder.content);
     createSlider("Range (Distance)", 10, 600, 10, headLight.distance, v => headLight.distance = v, lightFolder.content);
+
+    const rockFolder = createFolder("Rock Formations (Canyon)");
+    const rOpts = {
+      count: 800,
+      minSize: 6,
+      maxSize: 25,
+      randomness: 0.3
+    };
+
+    const updateRocks = () => {
+      scene.children.forEach(c => {
+        if (c.name === "rockGroup") {
+          // Properly dispose of materials
+          c.traverse(child => {
+            if (child instanceof THREE.Mesh) {
+              if (child.material instanceof THREE.Material) child.material.dispose();
+            }
+          });
+          scene.remove(c);
+        }
+      });
+      const newRocks = createRockFormations({ ...rOpts, range: 2000 });
+      newRocks.name = "rockGroup";
+      scene.add(newRocks);
+    };
+
+    createSlider("Rock Count", 10, 1200, 10, rOpts.count, v => { rOpts.count = v; updateRocks(); }, rockFolder.content);
+    createSlider("Min Size", 1, 50, 1, rOpts.minSize, v => { rOpts.minSize = v; updateRocks(); }, rockFolder.content);
+    createSlider("Max Size", 5, 100, 1, rOpts.maxSize, v => { rOpts.maxSize = v; updateRocks(); }, rockFolder.content);
+    createSlider("Randomness (Scatter)", 0, 1.0, 0.05, rOpts.randomness, v => { rOpts.randomness = v; updateRocks(); }, rockFolder.content);
   }
 
   const resize = () => {
@@ -248,11 +299,11 @@ export async function startGame(shell: AppShell) {
   ro.observe(shell.canvasHost);
   resize();
 
-  const subCenter = getVisualCenter(subGroup);
-  subGroup.position.sub(subCenter);
+  // const subCenter = getVisualCenter(subGroup);
+  // subGroup.position.sub(subCenter);
 
   const WATER_LEVEL = 8.0;
-  const SURFACE_OFFSET = 1.0; 
+  const SURFACE_OFFSET = 1.0;
   subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
 
   const baseTarget = new THREE.Vector3(0, 0, 0);
@@ -288,7 +339,7 @@ export async function startGame(shell: AppShell) {
       subGroup.position.y = WATER_LEVEL + SURFACE_OFFSET;
     }
     const floorY = env.terrain.getHeight(subGroup.position.x, subGroup.position.z) + env.terrain.mesh.position.y;
-    const minHeight = floorY + 1.2; 
+    const minHeight = floorY + 1.2;
     if (subGroup.position.y < minHeight) {
       subGroup.position.y = minHeight;
     }
@@ -300,6 +351,9 @@ export async function startGame(shell: AppShell) {
     camPos.lerp(desired, 1 - Math.exp(-dt * 6));
     camera.position.copy(camPos);
     camera.lookAt(baseTarget);
+
+    // updateBeam(); // Keep beam synced with any spotlight changes
+
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
