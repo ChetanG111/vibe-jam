@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { fBm } from "./noise";
+import { createUnderwaterMaterial } from "./underwaterMaterial";
 
 export interface TerrainOptions {
   size: number;
@@ -52,12 +53,7 @@ export function createOceanFloor(options: TerrainOptions) {
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
 
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    flatShading: true, // This is key for the low-poly look!
-    metalness: 0.1,
-    roughness: 0.8,
-  });
+  const material = createUnderwaterMaterial();
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "oceanFloor";
@@ -133,12 +129,10 @@ export function createRockFormations(options: RockOptions) {
   const { count, range, minSize, maxSize, randomness } = options;
   const rockGroup = new THREE.Group();
 
-  const rockMat = new THREE.MeshStandardMaterial({
-    color: 0x050505,
-    roughness: 0.8,
-    metalness: 0.4,
-    flatShading: true,
-  });
+  const rockMat = createUnderwaterMaterial();
+  // Adjust rock material slightly if needed via uniforms
+  rockMat.uniforms.causticIntensity.value = 0.4;
+  rockMat.uniforms.baseColor.value = new THREE.Color(0x222222);
 
   const wallPositions = [
     { x: -35, z: 0 },
