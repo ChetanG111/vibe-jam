@@ -1,47 +1,53 @@
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Sky, PerspectiveCamera } from "@react-three/drei";
-import { Leva } from "leva";
+import { PerspectiveCamera, Sky } from "@react-three/drei";
+import { useControls, folder, Leva } from "leva";
 import WaterFloor from "./components/WaterFloor";
 import SeabedFloor from "./components/WaterFloor/components/SeabedFloor";
 import { Submarine } from "./Submarine";
 
 export function App() {
+  const { ambient, sun, fogColor, fogNear, fogFar, skyTurbidity, skyRayleigh } = useControls("Environment", {
+    ambient: { value: 0.6, min: 0, max: 2 },
+    sun: { value: 2.0, min: 0, max: 10 },
+    fogColor: "#0A2A3A",
+    fogNear: { value: 100, min: 0, max: 1000 },
+    fogFar: { value: 1500, min: 500, max: 5000 },
+    skyTurbidity: { value: 0.1, min: 0, max: 20 },
+    skyRayleigh: { value: 0.0, min: 0, max: 10 },
+  });
+
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#011a2a" }}>
+    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#3FA9F5" }}>
+      <Leva collapsed />
       <Canvas shadows>
-        <fog attach="fog" args={["#3FA9F5", 10, 800]} />
+        <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
         <PerspectiveCamera makeDefault position={[0, 15, 30]} fov={55} />
         
         {/* Lights */}
-        <ambientLight intensity={1.5} />
+        <ambientLight intensity={ambient} />
         <directionalLight 
-          position={[100, 200, 100]} 
-          intensity={4.0} 
+          position={[100, 500, 100]} 
+          intensity={sun} 
           castShadow 
-          shadow-mapSize={[4096, 4096]} 
-          shadow-camera-left={-200}
-          shadow-camera-right={200}
-          shadow-camera-top={200}
-          shadow-camera-bottom={-200}
+          shadow-mapSize={[2048, 2048]} 
+          shadow-camera-left={-500}
+          shadow-camera-right={500}
+          shadow-camera-top={500}
+          shadow-camera-bottom={-500}
         />
 
         {/* Anime Water System */}
         <group position={[0, 0, 0]}>
           <WaterFloor />
           <SeabedFloor 
-            seabedDepthOverride={-50} 
+            seabedDepthOverride={-60} 
             seabedScaleOverride={0.10} 
           />
         </group>
 
-        <Sky sunPosition={[100, 20, 100]} turbidity={0.1} rayleigh={0.5} />
+        <Sky sunPosition={[100, 100, 100]} turbidity={skyTurbidity} rayleigh={skyRayleigh} mieCoefficient={0.005} mieDirectionalG={0.8} />
         <Submarine />
-
-        {/* Environment */}
-        <Sky sunPosition={[100, 10, 100]} />
       </Canvas>
-
-      <Leva collapsed />
     </div>
   );
 }

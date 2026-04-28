@@ -63,10 +63,10 @@ export default function SeabedFloor({
           uFlowZ:         { value: -0.11 },
           uEdgeThreshold: { value: 0.06 },
           uEdgeSoftness:  { value: 0.04 },
-          uDeepColor:     { value: new THREE.Color("#27a3d8") },
-          uHighlight:     { value: new THREE.Color("#0a1f3c") },
-          uFadeDistance:  { value: 250.0 },
-          uFadeStrength:  { value: 2.1 },
+          uDeepColor:     { value: new THREE.Color("#1E3A4A") },
+          uHighlight:     { value: new THREE.Color("#1E3A4A") },
+          uFadeDistance:  { value: 1500.0 },
+          uFadeStrength:  { value: 1.5 },
           uCamXZ:         { value: new THREE.Vector2() },
         },
       }),
@@ -104,7 +104,7 @@ export default function SeabedFloor({
       renderOrder={0}
       receiveShadow
     >
-      <planeGeometry args={[600, 600]} />
+      <planeGeometry args={[2000, 2000]} />
       <primitive object={material} attach="material" />
     </mesh>
   );
