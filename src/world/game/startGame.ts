@@ -4,6 +4,7 @@ import { setupEnvironment } from "./environment";
 import { loadSubmarine, SubmarineModelType } from "./submarine";
 import { getCameraDistanceForObject, getVisualCenter } from "./cameraUtils";
 import { createRockFormations } from "./terrain";
+import { gameBridge } from "../../bridge";
 // import { createVolumetricBeam } from "./lightUtils";
 
 export async function startGame(shell: AppShell) {
@@ -40,6 +41,10 @@ export async function startGame(shell: AppShell) {
   const subGroup = new THREE.Group();
   subGroup.position.set(0, 9.0, 0);
   scene.add(subGroup);
+
+  // --- Bridge references ---
+  gameBridge.camera = camera;
+  gameBridge.submarine = subGroup;
 
   // --- Hero Lighting (Submarine visibility) ---
   const heroLight = new THREE.DirectionalLight(0xffffff, 5.0);
