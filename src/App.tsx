@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { Leva } from "leva";
 import { boot } from "./platform/boot";
 import WaterFloor from "./components/WaterFloor";
+import { BridgeSync } from "./BridgeSync";
 
 function VanillaGame() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -32,6 +33,7 @@ export function App() {
             gl.setClearColor(0x000000, 0); // Transparent canvas
           }}
         >
+          <BridgeSync />
           <ambientLight intensity={1} />
           {/* We'll position the water at Y=8 to match the original level */}
           <group position={[0, 8, 0]}>
