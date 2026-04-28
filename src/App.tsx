@@ -9,27 +9,32 @@ export function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#011a2a" }}>
       <Canvas shadows>
+        <fog attach="fog" args={["#3FA9F5", 10, 800]} />
         <PerspectiveCamera makeDefault position={[0, 15, 30]} fov={55} />
         
         {/* Lights */}
-        <ambientLight intensity={1.2} />
+        <ambientLight intensity={1.5} />
         <directionalLight 
-          position={[50, 100, 50]} 
-          intensity={3.5} 
+          position={[100, 200, 100]} 
+          intensity={4.0} 
           castShadow 
           shadow-mapSize={[4096, 4096]} 
+          shadow-camera-left={-200}
+          shadow-camera-right={200}
+          shadow-camera-top={200}
+          shadow-camera-bottom={-200}
         />
 
         {/* Anime Water System */}
         <group position={[0, 0, 0]}>
           <WaterFloor />
           <SeabedFloor 
-            seabedDepthOverride={-35} 
+            seabedDepthOverride={-50} 
             seabedScaleOverride={0.10} 
           />
         </group>
 
-        {/* Submarine Controller */}
+        <Sky sunPosition={[100, 20, 100]} turbidity={0.1} rayleigh={0.5} />
         <Submarine />
 
         {/* Environment */}

@@ -69,11 +69,11 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
           uNoiseFlowSpeed:  { value: 0.20 },
           uDistortAmount:   { value: 0.30 },
           uDeepColor:       { value: new THREE.Color("#1a3a5c") },
-          uMidColor:        { value: new THREE.Color("#59c0e8") },
-          uMidPos:          { value: 0.084 },
+          uMidColor:        { value: new THREE.Color("#3FA9F5") },
+          uMidPos:          { value: 0.25 },
           uHighlight:       { value: new THREE.Color("#ffffff") },
           uOpacity:       { value: 1.0 },
-          uDeepOpacity:   { value: 0.45 },
+          uDeepOpacity:   { value: 0.60 },
           uFadeDistance:    { value: 90.0 },
           uFadeStrength:    { value: 1.4 },
           uCamXZ:           { value: new THREE.Vector2() },
@@ -146,7 +146,7 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
       frustumCulled={false}
       renderOrder={2}
     >
-      <planeGeometry args={[600, 600]} />
+      <planeGeometry args={[2000, 2000]} />
       <primitive object={material} attach="material" />
     </mesh>
   );
