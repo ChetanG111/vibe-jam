@@ -5,6 +5,10 @@ import { loadSubmarine, SubmarineModelType } from "./submarine";
 import { getCameraDistanceForObject, getVisualCenter } from "./cameraUtils";
 import { createRockFormations } from "./terrain";
 import { gameBridge } from "../../bridge";
+import { createRoot, events } from "@react-three/fiber";
+import WaterFloor from "../../components/WaterFloor";
+import SeabedFloor from "../../components/WaterFloor/components/SeabedFloor";
+import { SubmarineRippleEmitter } from "../../SubmarineRippleEmitter";
 // import { createVolumetricBeam } from "./lightUtils";
 
 export async function startGame(shell: AppShell) {
@@ -37,6 +41,29 @@ export async function startGame(shell: AppShell) {
   camera.layers.enable(1);
 
   const env = setupEnvironment(scene);
+
+  // --- R3F Bridge (Direct injection into vanilla scene) ---
+  const root = createRoot(scene);
+  root.configure({ 
+    camera, 
+    events, 
+    size: { width: window.innerWidth, height: window.innerHeight } 
+  });
+  
+  root.render(
+    <>
+      <ambientLight intensity={1.5} />
+      <group position={[0, 8, 0]}>
+        <WaterFloor />
+        <SeabedFloor />
+      </group>
+      <SubmarineRippleEmitter />
+    </>
+  );
+
+  window.addEventListener("resize", () => {
+    root.configure({ size: { width: window.innerWidth, height: window.innerHeight } });
+  });
 
   const subGroup = new THREE.Group();
   subGroup.position.set(0, 9.0, 0);

@@ -24,28 +24,8 @@ function VanillaGame() {
 export function App() {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#011a2a" }}>
-      {/* Vanilla Game Layer */}
+      {/* Vanilla Game Layer (Now hosting its own R3F components) */}
       <VanillaGame />
-      
-      {/* R3F Water Layer */}
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        <Canvas 
-          camera={{ fov: 55, near: 0.1, far: 1200 }} 
-          onCreated={({ gl }) => {
-            gl.setClearColor(0x000000, 0); // Transparent canvas
-          }}
-        >
-          <BridgeSync />
-          <SubmarineRippleEmitter />
-          <ambientLight intensity={1} />
-          {/* We'll position the water at Y=8 to match the original level */}
-          <group position={[0, 8, 0]}>
-            <WaterFloor />
-            <SeabedFloor />
-          </group>
-        </Canvas>
-      </div>
-
       <Leva collapsed />
     </div>
   );
