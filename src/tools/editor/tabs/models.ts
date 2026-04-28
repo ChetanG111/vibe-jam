@@ -5,7 +5,7 @@ import type { PrimitivePart, PrimitiveType, ProceduralModel } from "../store/typ
 import { copyText, downloadTextFile, safeJsonParse } from "../util/io";
 import { validateModelPack } from "../util/validate";
 
-export function registerModelEditor(ui: EditorShell, store: EditorStore, _unusedCanvasHost: HTMLDivElement) {
+export function registerModelEditor(ui: EditorShell, store: EditorStore, _unusedCanvasHost: HTMLElement) {
   ui.onTabChange((id) => {
     if (id !== "models") return;
     render(ui, store);
