@@ -93,6 +93,12 @@ export function Submarine() {
     // 4. Apply Everything
     currentPos.current.add(velocity.current.clone().multiplyScalar(dt));
     
+    // Hard Constraint: Stay below water surface (Y=0)
+    if (currentPos.current.y > 0) {
+      currentPos.current.y = 0;
+      velocity.current.y = Math.min(0, velocity.current.y); // Stop upward momentum
+    }
+
     // 5. Visual Polish (Subtle tilts)
     meshRef.current.position.copy(currentPos.current);
     meshRef.current.rotation.y = currentRotation.current;
