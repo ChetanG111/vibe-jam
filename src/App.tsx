@@ -1,11 +1,13 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
 import { PerspectiveCamera, Sky } from "@react-three/drei";
 import { useControls, folder, Leva } from "leva";
 import WaterFloor from "./components/WaterFloor";
 import SeabedFloor from "./components/WaterFloor/components/SeabedFloor";
 import { Submarine } from "./Submarine";
+import Editor from "./pages/Editor";
 
-export function App() {
+const MainScene = () => {
   const { ambient, sun, fogColor, fogNear, fogFar, skyTurbidity, skyRayleigh } = useControls("Environment", {
     ambient: { value: 0.6, min: 0 },
     sun: { value: 2.0, min: 0 },
@@ -49,5 +51,16 @@ export function App() {
         <Submarine />
       </Canvas>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainScene />} />
+        {import.meta.env.DEV && <Route path="/editor" element={<Editor />} />}
+      </Routes>
+    </BrowserRouter>
   );
 }
