@@ -77,9 +77,15 @@ export function Submarine() {
 
     const forwardDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
     const lateralDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
-    const targetVel = forwardDir.clone().multiplyScalar(moveInput * config.speed).add(lateralDir.multiplyScalar(sideInput * config.sidewaysSpeed));
-    velocity.current.lerp(targetVel, config.acceleration * dt);
-    if (moveInput === 0 && sideInput === 0) velocity.current.lerp(new THREE.Vector3(0, velocity.current.y, 0), config.drag * dt);
+    
+    // Calculate target horizontal velocity (X and Z only)
+    const targetVelH = forwardDir.clone().multiplyScalar(moveInput * config.speed)
+        .add(lateralDir.multiplyScalar(sideInput * config.sidewaysSpeed));
+    
+    // Apply horizontal movement (acceleration or drag)
+    const horizRate = (moveInput === 0 && sideInput === 0) ? config.drag : config.acceleration;
+    velocity.current.x = THREE.MathUtils.lerp(velocity.current.x, targetVelH.x, horizRate * dt);
+    velocity.current.z = THREE.MathUtils.lerp(velocity.current.z, targetVelH.z, horizRate * dt);
 
     // 2. Turning
     let turnInput = 0;
@@ -93,12 +99,22 @@ export function Submarine() {
     if (keys.up) vertInput = 1;
     if (keys.down) vertInput = -1;
     const targetVertVel = vertInput * config.verticalSpeed;
-    velocity.current.y = THREE.MathUtils.lerp(velocity.current.y, targetVertVel, config.verticalSmoothing * dt);
-    if (vertInput === 0) velocity.current.y = THREE.MathUtils.lerp(velocity.current.y, 0, config.drag * dt);
+    const vertRate = vertInput === 0 ? config.drag : config.verticalSmoothing;
+    velocity.current.y = THREE.MathUtils.lerp(velocity.current.y, targetVertVel, vertRate * dt);
 
-    // 4. Apply
+    // 4. Apply & Clamp
     currentPos.current.add(velocity.current.clone().multiplyScalar(dt));
-    if (currentPos.current.y > 0) { currentPos.current.y = 0; velocity.current.y = Math.min(0, velocity.current.y); }
+    
+    // Surface clamp (Water surface is at y=50)
+    if (currentPos.current.y > 50) { 
+      currentPos.current.y = 50; 
+      velocity.current.y = Math.min(0, velocity.current.y); 
+    }
+    // Floor clamp (Seabed is at y=-60, so -55 is a safe floor)
+    if (currentPos.current.y < -55) {
+      currentPos.current.y = -55;
+      velocity.current.y = Math.max(0, velocity.current.y);
+    }
 
     // 5. Visuals
     meshRef.current.position.copy(currentPos.current);
