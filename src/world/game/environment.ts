@@ -57,6 +57,7 @@ export function setupEnvironment(scene: THREE.Scene) {
   }
   scene.add(rayGroup);
 
+  /*
   // Custom Cartoon Water Shader
   const waterGeometry = new THREE.PlaneGeometry(2000, 2000, 128, 128); // more segments for vertex waves
   const waterUniforms = {
@@ -208,17 +209,19 @@ export function setupEnvironment(scene: THREE.Scene) {
   water.rotation.x = -Math.PI / 2;
   water.position.y = 8;
   scene.add(water);
+  */
 
+  let time = 0;
   return {
-    water,
-    waterUniforms,
+    water: null,
+    waterUniforms: null,
     terrain,
     tick: (dt: number) => {
-      water.material.uniforms['time'].value += dt;
+      time += dt;
       
       // Update terrain material time
       if (terrain.mesh.material instanceof THREE.ShaderMaterial) {
-        terrain.mesh.material.uniforms['time'].value += dt;
+        terrain.mesh.material.uniforms['time'].value = time;
       }
       
       // Update rock material time by finding the group in the scene
@@ -226,14 +229,14 @@ export function setupEnvironment(scene: THREE.Scene) {
       if (currentRockGroup && currentRockGroup.children.length > 0) {
         const firstMesh = currentRockGroup.children[0] as THREE.Mesh;
         if (firstMesh.material instanceof THREE.ShaderMaterial) {
-          firstMesh.material.uniforms['time'].value += dt;
+          firstMesh.material.uniforms['time'].value = time;
         }
       }
 
       // Gentle swaying for god rays
       rayGroup.children.forEach((ray, i) => {
-        ray.rotation.x += Math.sin(water.material.uniforms['time'].value * 0.5 + i) * 0.0005;
-        ray.rotation.z += Math.cos(water.material.uniforms['time'].value * 0.4 + i) * 0.0005;
+        ray.rotation.x += Math.sin(time * 0.5 + i) * 0.0005;
+        ray.rotation.z += Math.cos(time * 0.4 + i) * 0.0005;
       });
     }
   };
