@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
+import { Canvas } from "@react-three/fiber";
+import { Leva } from "leva";
 import { boot } from "./platform/boot";
+import WaterFloor from "./components/WaterFloor";
 
 function VanillaGame() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -17,14 +20,27 @@ function VanillaGame() {
 
 export function App() {
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      {/* Our original vanilla game logic runs here */}
+    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#011a2a" }}>
+      {/* Vanilla Game Layer */}
       <VanillaGame />
       
-      {/* This is where we will add the new R3F Water Shader overlay later */}
+      {/* R3F Water Layer */}
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        {/* We can put a Canvas here once we have the shader files */}
+        <Canvas 
+          camera={{ fov: 55, near: 0.1, far: 1200 }} 
+          onCreated={({ gl }) => {
+            gl.setClearColor(0x000000, 0); // Transparent canvas
+          }}
+        >
+          <ambientLight intensity={1} />
+          {/* We'll position the water at Y=8 to match the original level */}
+          <group position={[0, 8, 0]}>
+            <WaterFloor />
+          </group>
+        </Canvas>
       </div>
+
+      <Leva collapsed />
     </div>
   );
 }
