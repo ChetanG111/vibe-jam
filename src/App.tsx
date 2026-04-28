@@ -50,7 +50,6 @@ const MainScene = () => {
             <WaterFloor />
             <SeabedFloor 
               seabedDepthOverride={-60} 
-              seabedScaleOverride={0.10} 
             />
             <Rocks seabedDepthOverride={-60} />
           </group>
