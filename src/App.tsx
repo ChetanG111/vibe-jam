@@ -12,22 +12,20 @@ export function App() {
         <PerspectiveCamera makeDefault position={[0, 15, 30]} fov={55} />
         
         {/* Lights */}
-        <ambientLight intensity={0.8} />
+        <ambientLight intensity={1.2} />
         <directionalLight 
-          position={[10, 20, 10]} 
-          intensity={2.5} 
+          position={[50, 100, 50]} 
+          intensity={3.5} 
           castShadow 
-          shadow-mapSize={[2048, 2048]} 
+          shadow-mapSize={[4096, 4096]} 
         />
 
         {/* Anime Water System */}
         <group position={[0, 0, 0]}>
           <WaterFloor />
           <SeabedFloor 
-            seabedDepthOverride={-25} 
-            seabedScaleOverride={0.12} 
-            colorOverride="#0a1f3c" 
-            colorTopOverride="#27a3d8" 
+            seabedDepthOverride={-35} 
+            seabedScaleOverride={0.10} 
           />
         </group>
 
