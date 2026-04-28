@@ -47,8 +47,8 @@ export function Submarine() {
       verticalSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
     }),
     Camera: folder({
-      distance: { value: 15, min: 5, max: 40, step: 1 },
-      height: { value: 6, min: -5, max: 20, step: 0.5 },
+      distance: { value: 25, min: 5, max: 50, step: 1 },
+      height: { value: 14.5, min: -5, max: 30, step: 0.5 },
       camSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
     })
   });
