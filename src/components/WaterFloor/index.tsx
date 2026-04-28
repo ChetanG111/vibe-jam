@@ -10,21 +10,14 @@ import { useWaterFloorControls } from "./utils/controls";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WaterFloor — cel-shaded / anime water using Voronoi F1 − SmoothF1
-//
-// Replicates the Blender node graph:
-//   TextureCoord → Mapping (Y offset) → Voronoi F1
-//                                      → Voronoi SmoothF1
-//   Subtract (F1 − SF1) → ColorRamp → color
-//
-// World-space XZ coordinates so the pattern is world-anchored (not UV-based).
-// Plane follows the camera like GridFloor for an infinite-floor look.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface WaterFloorProps {
+export interface WaterFloorProps {
   deepOpacityOverride?: number;
+  fadeDistanceOverride?: number;
 }
 
-export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
+export default function WaterFloor({ deepOpacityOverride, fadeDistanceOverride }: WaterFloorProps) {
   const meshRef = useRef<THREE.Mesh>(null!);
 
   const {
@@ -77,7 +70,6 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
           uFadeDistance:    { value: 1500.0 },
           uFadeStrength:    { value: 1.5 },
           uCamXZ:           { value: new THREE.Vector2() },
-          // ripple uniforms — visual config comes from rippleStore (set by useWaterRipple)
           uRippleCenters:  { value: Array.from({ length: 8 }, () => new THREE.Vector2()) },
           uRippleTimes:    { value: new Array(8).fill(0) },
           uRippleCount:    { value: 0 },
@@ -96,7 +88,6 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
 
   useFrame(({ camera, clock }) => {
     const u = material.uniforms;
-    // Use absolute clock time so ripple startTimes (from same clock) are comparable
     u.uTime.value           = clock.getElapsedTime();
     u.uScale.value          = waterScale;
     u.uSmoothness.value     = cellSmoothness;
@@ -114,11 +105,10 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
     u.uHighlight.value.set(highlightColor);
     u.uOpacity.value        = opacity;
     u.uDeepOpacity.value    = deepOpacityOverride ?? deepOpacity;
-    u.uFadeDistance.value   = fadeDistance;
+    u.uFadeDistance.value   = fadeDistanceOverride ?? fadeDistance;
     u.uFadeStrength.value   = fadeStrength;
     u.uCamXZ.value.set(camera.position.x, camera.position.z);
 
-    // ── Ripple sync — visual config comes from rippleStore (set by useWaterRipple) ──
     const cfg = rippleStore.getConfig();
     u.uRippleSpeed.value    = cfg.speed;
     u.uRippleWidth.value    = cfg.width;
@@ -133,7 +123,6 @@ export default function WaterFloor({ deepOpacityOverride }: WaterFloorProps) {
       u.uRippleTimes.value[i] = ripples[i].t;
     }
 
-    // Follow camera in XZ → infinite tiling (same pattern as GridFloor)
     meshRef.current.position.x = camera.position.x;
     meshRef.current.position.z = camera.position.z;
   });
