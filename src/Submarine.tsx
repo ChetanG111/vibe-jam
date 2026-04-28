@@ -55,17 +55,17 @@ export function Submarine() {
     Headlight: folder({
       headlightOn:        { value: true,      label: "On" },
       headlightColor:     { value: "#b8e8ff", label: "Color" },
-      headlightIntensity: { value: 12,   min: 0,    step: 0.5,  label: "Intensity" },
-      headlightDistance:  { value: 30,   min: 1,    step: 1,    label: "Distance" },
-      headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2,  step: 0.01, label: "Cone Angle" },
-      headlightPenumbra:  { value: 0.4,  min: 0,    max: 1,            step: 0.05, label: "Penumbra" },
-      headlightOffset:    { value: 2.2,  min: -10,  max: 10,           step: 0.1,  label: "Nose Offset" },
+      headlightIntensity: { value: 16.5,   min: 0,    step: 0.5,  label: "Intensity" },
+      headlightDistance:  { value: 283,   min: 1,    step: 1,    label: "Distance" },
+      headlightAngle:     { value: 1.16, min: 0.05, max: Math.PI / 2,  step: 0.01, label: "Cone Angle" },
+      headlightPenumbra:  { value: 0.6,  min: 0,    max: 1,            step: 0.05, label: "Penumbra" },
+      headlightOffset:    { value: { x: 0, y: 0.0949, z: 5.9796 }, step: 0.1, label: "Nose Offset" },
     }),
     CameraLight: folder({
       camLightOn:        { value: true,      label: "On" },
       camLightColor:     { value: "#ffffff", label: "Color" },
-      camLightIntensity: { value: 5,    min: 0,    step: 0.1,  label: "Intensity" },
-      camLightDistance:  { value: 100,  min: 1,    step: 1,    label: "Range" },
+      camLightIntensity: { value: 15.6,    min: 0,    step: 0.1,  label: "Intensity" },
+      camLightDistance:  { value: 112,  min: 1,    step: 1,    label: "Range" },
     }),
   });
 
@@ -151,15 +151,33 @@ export function Submarine() {
     }
 
     // 8. Publish submarine state to store so shaders can read it
-    const p = currentPos.current;
-    const lightWorldPos = p.clone().add(forwardDir.clone().multiplyScalar(config.headlightOffset));
+    const subMatrix = new THREE.Matrix4().compose(
+      currentPos.current,
+      meshRef.current.quaternion,
+      new THREE.Vector3(1, 1, 1)
+    );
+
+    // The model (primitive) is now unrotated in this test
+    // We use an identity matrix for the model rotation
+    const modelRotation = new THREE.Matrix4();
+    const modelToWorld = subMatrix.clone().multiply(modelRotation);
+
+    const nosePos = new THREE.Vector3(
+      config.headlightOffset.x, 
+      config.headlightOffset.y, 
+      config.headlightOffset.z
+    ).applyMatrix4(modelToWorld);
+
+    submarineStore.position.x = nosePos.x;
+    submarineStore.position.y = nosePos.y;
+    submarineStore.position.z = nosePos.z;
     
-    submarineStore.position.x = lightWorldPos.x;
-    submarineStore.position.y = lightWorldPos.y + 0.2; // Slight vertical offset for the light bulb
-    submarineStore.position.z = lightWorldPos.z;
-    submarineStore.forward.x = forwardDir.x;
-    submarineStore.forward.y = forwardDir.y;
-    submarineStore.forward.z = forwardDir.z;
+    // Calculate the world-space forward direction (facing where the nose points)
+    const forwardVec = new THREE.Vector3(0, 0, 1).transformDirection(modelToWorld);
+    submarineStore.forward.x = forwardVec.x;
+    submarineStore.forward.y = forwardVec.y;
+    submarineStore.forward.z = forwardVec.z;
+
     const c = new THREE.Color(config.headlightColor);
     submarineStore.headlight.on        = config.headlightOn;
     submarineStore.headlight.intensity = config.headlightIntensity;
@@ -185,7 +203,7 @@ export function Submarine() {
 
   return (
     <group ref={meshRef}>
-      <primitive object={scene} scale={1.5} rotation-y={0} />
+      <primitive object={scene} scale={1.5} />
     </group>
   );
 }
