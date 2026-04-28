@@ -1,6 +1,7 @@
 export const VERT = /* glsl */ `
   varying vec2 vWorldPos;
   varying vec3 vViewPos;
+  varying vec3 vWorldPos3;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -22,8 +23,9 @@ export const VERT = /* glsl */ `
     h += noise(worldPos.xz * 0.1) * 3.0;
     worldPos.y += h;
 
-    vWorldPos   = worldPos.xz;
-    vViewPos    = (viewMatrix * worldPos).xyz;
+    vWorldPos    = worldPos.xz;
+    vWorldPos3   = worldPos.xyz;
+    vViewPos     = (viewMatrix * worldPos).xyz;
     gl_Position = projectionMatrix * viewMatrix * worldPos;
   }
 `;

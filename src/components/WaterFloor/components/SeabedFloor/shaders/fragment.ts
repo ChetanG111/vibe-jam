@@ -12,10 +12,21 @@ export const FRAG = /* glsl */ `
   uniform float uFadeStrength;
   uniform vec2  uCamXZ;
 
+  // ── Headlight uniforms ──────────────────────────────────────────────────────
+  uniform vec3  uSubPos;        // submarine world-space position
+  uniform vec3  uSubForward;    // submarine world-space forward direction (normalised)
+  uniform vec3  uHeadlightColor;
+  uniform float uHeadlightIntensity;
+  uniform float uHeadlightDistance;
+  uniform float uHeadlightAngle;   // half-cone angle in radians
+  uniform float uHeadlightPenumbra;// 0..1 soft edge fraction
+  uniform float uHeadlightOn;      // 1.0 = on, 0.0 = off
+
   varying vec2 vWorldPos;
   varying vec3 vViewPos;
+  varying vec3 vWorldPos3;  // full XYZ world position of this fragment
 
-  // Standard hash/smin/voronoi functions (omitted for brevity in replace call, but keeping logic)
+  // Standard hash/smin/voronoi functions
   vec2 hash2(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
@@ -72,9 +83,34 @@ export const FRAG = /* glsl */ `
     float causticT = smoothstep(uEdgeThreshold - uEdgeSoftness,
                               uEdgeThreshold + uEdgeSoftness, edge);
     
-    // 4. Combine
+    // 4. Base color
     vec3 terrainBase = mix(uDeepColor * 0.7, uDeepColor, diffuse);
     vec3 color = mix(terrainBase, uHighlight, causticT * 0.5);
+
+    // 5. Headlight (spotlight cone computed in world space)
+    if (uHeadlightOn > 0.5) {
+      vec3  fragWorldPos = vec3(vWorldPos.x, uSubPos.y - uHeadlightDistance * 0.3, vWorldPos.y);
+      // Use the actual 3D world position passed via varying
+      vec3  toFrag   = vWorldPos3 - uSubPos;
+      float distToFrag = length(toFrag);
+      vec3  toFragN  = toFrag / max(distToFrag, 0.001);
+
+      // Cone test: angle between forward and direction-to-fragment
+      float cosAngle    = dot(uSubForward, toFragN);
+      float cosInner    = cos(uHeadlightAngle * (1.0 - uHeadlightPenumbra));
+      float cosOuter    = cos(uHeadlightAngle);
+      float coneFactor  = smoothstep(cosOuter, cosInner, cosAngle);
+
+      // Distance falloff (inverse square, clamped)
+      float distFactor  = 1.0 - clamp(distToFrag / uHeadlightDistance, 0.0, 1.0);
+      distFactor = distFactor * distFactor;
+
+      // Surface normal facing: seabed faces up (+Y), so more light when beam comes from above
+      float nDotL = max(dot(normal, -toFragN), 0.0);
+
+      float headlightAtten = coneFactor * distFactor * nDotL * uHeadlightIntensity * 0.08;
+      color += uHeadlightColor * headlightAtten;
+    }
 
     float dist  = length(vWorldPos - uCamXZ);
     float fade  = 1.0 - pow(clamp(dist / uFadeDistance, 0.0, 1.0), uFadeStrength);

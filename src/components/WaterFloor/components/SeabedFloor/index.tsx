@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { VERT } from "./shaders/vertex";
 import { FRAG } from "./shaders/fragment";
 import { useSeabedControls } from "./utils/controls";
+import { submarineStore } from "../../../../stores/submarineStore";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SeabedFloor — animated Voronoi seabed visible through the transparent
@@ -68,6 +69,15 @@ export default function SeabedFloor({
           uFadeDistance:  { value: 1500.0 },
           uFadeStrength:  { value: 1.5 },
           uCamXZ:         { value: new THREE.Vector2() },
+          // Headlight
+          uSubPos:              { value: new THREE.Vector3() },
+          uSubForward:          { value: new THREE.Vector3(0, 0, -1) },
+          uHeadlightColor:      { value: new THREE.Color(0.72, 0.91, 1.0) },
+          uHeadlightIntensity:  { value: 12.0 },
+          uHeadlightDistance:   { value: 30.0 },
+          uHeadlightAngle:      { value: 0.32 },
+          uHeadlightPenumbra:   { value: 0.4 },
+          uHeadlightOn:         { value: 1.0 },
         },
       }),
     []
@@ -89,6 +99,17 @@ export default function SeabedFloor({
     u.uFadeDistance.value  = fadeDistanceOverride ?? fadeDistance;
     u.uFadeStrength.value  = fadeStrengthOverride ?? fadeStrength;
     u.uCamXZ.value.set(camera.position.x, camera.position.z);
+
+    // Headlight — read from the shared submarine store
+    const sl = submarineStore;
+    u.uSubPos.value.set(sl.position.x, sl.position.y, sl.position.z);
+    u.uSubForward.value.set(sl.forward.x, sl.forward.y, sl.forward.z);
+    u.uHeadlightColor.value.setRGB(sl.headlight.color.r, sl.headlight.color.g, sl.headlight.color.b);
+    u.uHeadlightIntensity.value = sl.headlight.intensity;
+    u.uHeadlightDistance.value  = sl.headlight.distance;
+    u.uHeadlightAngle.value     = sl.headlight.angle;
+    u.uHeadlightPenumbra.value  = sl.headlight.on ? 0.4 : 0;
+    u.uHeadlightOn.value        = sl.headlight.on ? 1.0 : 0.0;
 
     meshRef.current.position.x = camera.position.x;
     meshRef.current.position.z = camera.position.z;

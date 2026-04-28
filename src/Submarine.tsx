@@ -4,6 +4,7 @@ import { useGLTF } from "@react-three/drei";
 import { useControls, folder } from "leva";
 import * as THREE from "three";
 import { rippleStore } from "./components/WaterFloor/stores/rippleStore";
+import { submarineStore } from "./stores/submarineStore";
 
 export function Submarine() {
   const meshRef = useRef<THREE.Group>(null!);
@@ -52,18 +53,14 @@ export function Submarine() {
       camSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
     }),
     Headlight: folder({
-      headlightOn:        { value: true,    label: "On" },
+      headlightOn:        { value: true,      label: "On" },
       headlightColor:     { value: "#b8e8ff", label: "Color" },
-      headlightIntensity: { value: 12,  min: 0, max: 50,  step: 0.5,  label: "Intensity" },
-      headlightDistance:  { value: 30,  min: 1, max: 100, step: 1,    label: "Distance" },
-      headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2, step: 0.01, label: "Cone Angle" },
-      headlightPenumbra:  { value: 0.4, min: 0, max: 1,  step: 0.05, label: "Penumbra" },
+      headlightIntensity: { value: 12,   min: 0,    max: 50,           step: 0.5,  label: "Intensity" },
+      headlightDistance:  { value: 30,   min: 1,    max: 100,          step: 1,    label: "Distance" },
+      headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2,  step: 0.01, label: "Cone Angle" },
+      headlightPenumbra:  { value: 0.4,  min: 0,    max: 1,            step: 0.05, label: "Penumbra" },
     }),
   });
-
-  // Refs for the spotlight and its target object
-  const spotRef = useRef<THREE.SpotLight>(null!);
-  const spotTargetRef = useRef<THREE.Object3D>(null!);
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
@@ -79,10 +76,11 @@ export function Submarine() {
     if (keys.current["KeyA"]) sideInput = 1;
     if (keys.current["KeyD"]) sideInput = -1;
 
+    // Forward in world space = -Z rotated by currentRotation
     const forwardDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
     const lateralDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
     
-    const targetVel = forwardDir.multiplyScalar(moveInput * config.speed)
+    const targetVel = forwardDir.clone().multiplyScalar(moveInput * config.speed)
       .add(lateralDir.multiplyScalar(sideInput * config.sidewaysSpeed));
     
     // Smooth acceleration and strong drag
@@ -116,14 +114,13 @@ export function Submarine() {
     // Hard Constraint: Stay below water surface (Y=0)
     if (currentPos.current.y > 0) {
       currentPos.current.y = 0;
-      velocity.current.y = Math.min(0, velocity.current.y); // Stop upward momentum
+      velocity.current.y = Math.min(0, velocity.current.y);
     }
 
     // 5. Visual Polish (Subtle tilts)
     meshRef.current.position.copy(currentPos.current);
     meshRef.current.rotation.y = currentRotation.current;
     
-    // Slight tilt when moving up/down or turning
     const targetPitch = velocity.current.y * 2;
     const targetRoll = -turnInput * 0.1;
     meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, targetPitch, 0.1 * dt);
@@ -146,31 +143,27 @@ export function Submarine() {
       }
     }
 
-    // 8. Wire spotlight target (must be in scene graph each frame)
-    if (spotRef.current && spotTargetRef.current) {
-      spotRef.current.target = spotTargetRef.current;
-    }
+    // 8. Publish submarine state to store so shaders can read it
+    const p = currentPos.current;
+    submarineStore.position.x = p.x;
+    submarineStore.position.y = p.y;
+    submarineStore.position.z = p.z;
+    submarineStore.forward.x = forwardDir.x;
+    submarineStore.forward.y = forwardDir.y;
+    submarineStore.forward.z = forwardDir.z;
+    const c = new THREE.Color(config.headlightColor);
+    submarineStore.headlight.on        = config.headlightOn;
+    submarineStore.headlight.intensity = config.headlightIntensity;
+    submarineStore.headlight.distance  = config.headlightDistance;
+    submarineStore.headlight.angle     = config.headlightAngle;
+    submarineStore.headlight.color.r   = c.r;
+    submarineStore.headlight.color.g   = c.g;
+    submarineStore.headlight.color.b   = c.b;
   });
 
   return (
     <group ref={meshRef}>
       <primitive object={scene} scale={1.5} rotation-y={Math.PI} />
-
-      {/* Submarine headlight — sits at the nose, points forward (+Z local = forward for this model) */}
-      <spotLight
-        ref={spotRef}
-        visible={config.headlightOn}
-        color={config.headlightColor}
-        intensity={config.headlightIntensity}
-        distance={config.headlightDistance}
-        angle={config.headlightAngle}
-        penumbra={config.headlightPenumbra}
-        decay={2}
-        castShadow={false}
-        position={[0, 0.2, 2.2]}
-      />
-      {/* Target sits far forward so the beam points straight ahead */}
-      <object3D ref={spotTargetRef} position={[0, 0, 20]} />
     </group>
   );
 }
