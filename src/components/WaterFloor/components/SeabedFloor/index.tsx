@@ -15,6 +15,7 @@ import { useSeabedControls } from "./utils/controls";
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface SeabedFloorProps {
+  seabedDepthOverride?: number;
   colorOverride?: string;
   colorTopOverride?: string;
   fadeDistanceOverride?: number;
@@ -22,6 +23,7 @@ interface SeabedFloorProps {
 }
 
 export default function SeabedFloor({
+  seabedDepthOverride,
   colorOverride,
   colorTopOverride,
   fadeDistanceOverride,
@@ -88,7 +90,7 @@ export default function SeabedFloor({
 
     meshRef.current.position.x = camera.position.x;
     meshRef.current.position.z = camera.position.z;
-    meshRef.current.position.y = seabedDepth;
+    meshRef.current.position.y = seabedDepthOverride ?? seabedDepth;
   });
 
   return (
