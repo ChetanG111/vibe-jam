@@ -14,9 +14,9 @@ const Editor = () => {
   const transformControlsRef = useRef<any>(null!);
   const orbitControlsRef = useRef<any>(null!);
 
-  const onTransform = (e: THREE.Event | undefined) => {
-    if (e && e.target && e.target.object) {
-      setHeadlightPosition(e.target.object.position.clone());
+  const onTransform = () => {
+    if (headLightRef.current) {
+      setHeadlightPosition(headLightRef.current.position.clone());
     }
   };
 
