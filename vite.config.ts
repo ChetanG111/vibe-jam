@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ command }) => {
   return {
+    plugins: [react()],
     // Serve at / for local dev; build with relative paths for portability
-    // (Vercel, GitHub Pages subpaths, itch.io zip, Cloudflare Pages).
     base: command === "serve" ? "/" : "./",
     build: {
       sourcemap: true,
