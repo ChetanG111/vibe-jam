@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF, PerspectiveCamera } from "@react-three/drei";
 import { useControls, folder } from "leva";
@@ -19,9 +19,15 @@ export function Submarine() {
 
   // --- Keyboard State ---
   const keys = useRef<Record<string, boolean>>({});
-  useMemo(() => {
-    window.addEventListener("keydown", (e) => (keys.current[e.code] = true));
-    window.addEventListener("keyup", (e) => (keys.current[e.code] = false));
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => (keys.current[e.code] = true);
+    const up = (e: KeyboardEvent) => (keys.current[e.code] = false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
   }, []);
 
   // --- Tuning Playground (Leva) ---
@@ -40,10 +46,10 @@ export function Submarine() {
       turnMomentum: { value: 0.92, min: 0.8, max: 0.99, step: 0.01 },
     }),
     Vertical: folder({
-      buoyancy: { value: 0.001, min: 0, max: 0.02, step: 0.0001 },
-      diveForce: { value: 0.008, min: 0, max: 0.02, step: 0.001 },
+      buoyancy: { value: 0.0004, min: 0, max: 0.01, step: 0.0001 },
+      diveForce: { value: 0.01, min: 0, max: 0.05, step: 0.001 },
       neutralBuoyancyOffset: { value: 0, min: -50, max: 10, step: 0.5 },
-      verticalDrag: { value: 0.05, min: 0.01, max: 0.2, step: 0.01 },
+      verticalDrag: { value: 0.08, min: 0.01, max: 0.5, step: 0.01 },
     }),
     Polish: folder({
       driftAmount: { value: 0.5, min: 0, max: 2, step: 0.1 },
@@ -86,12 +92,11 @@ export function Submarine() {
     if (keys.current["Space"]) verticalInput = 1;
     if (keys.current["ShiftLeft"]) verticalInput = -1;
 
-    // Buoyancy: A constant upward pressure + a very weak "return to surface" urge
+    // Buoyancy: A constant upward pressure. Dive: A downward force.
     const buoyancyBase = config.buoyancy; 
-    const buoyancySpring = (currentPosition.current.y - config.neutralBuoyancyOffset) * 0.0001; // Extremely weak
     const diveEffect = verticalInput * config.diveForce;
 
-    velocity.current.y += (buoyancyBase + diveEffect - buoyancySpring) * dt;
+    velocity.current.y += (buoyancyBase + diveEffect) * dt;
     velocity.current.y *= Math.pow(1 - config.verticalDrag, dt);
 
     // 5. Apply Movement
