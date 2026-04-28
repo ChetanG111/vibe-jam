@@ -50,8 +50,20 @@ export function Submarine() {
       distance: { value: 37, min: 5, max: 50, step: 1 },
       height: { value: 16.0, min: -5, max: 30, step: 0.5 },
       camSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
-    })
+    }),
+    Headlight: folder({
+      headlightOn:        { value: true,    label: "On" },
+      headlightColor:     { value: "#b8e8ff", label: "Color" },
+      headlightIntensity: { value: 12,  min: 0, max: 50,  step: 0.5,  label: "Intensity" },
+      headlightDistance:  { value: 30,  min: 1, max: 100, step: 1,    label: "Distance" },
+      headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2, step: 0.01, label: "Cone Angle" },
+      headlightPenumbra:  { value: 0.4, min: 0, max: 1,  step: 0.05, label: "Penumbra" },
+    }),
   });
+
+  // Refs for the spotlight and its target object
+  const spotRef = useRef<THREE.SpotLight>(null!);
+  const spotTargetRef = useRef<THREE.Object3D>(null!);
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
@@ -133,11 +145,32 @@ export function Submarine() {
         lastRippleTime.current = t;
       }
     }
+
+    // 8. Wire spotlight target (must be in scene graph each frame)
+    if (spotRef.current && spotTargetRef.current) {
+      spotRef.current.target = spotTargetRef.current;
+    }
   });
 
   return (
     <group ref={meshRef}>
       <primitive object={scene} scale={1.5} rotation-y={Math.PI} />
+
+      {/* Submarine headlight — sits at the nose, points forward (+Z local = forward for this model) */}
+      <spotLight
+        ref={spotRef}
+        visible={config.headlightOn}
+        color={config.headlightColor}
+        intensity={config.headlightIntensity}
+        distance={config.headlightDistance}
+        angle={config.headlightAngle}
+        penumbra={config.headlightPenumbra}
+        decay={2}
+        castShadow={false}
+        position={[0, 0.2, 2.2]}
+      />
+      {/* Target sits far forward so the beam points straight ahead */}
+      <object3D ref={spotTargetRef} position={[0, 0, 20]} />
     </group>
   );
 }
