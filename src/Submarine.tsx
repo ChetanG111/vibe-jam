@@ -137,7 +137,7 @@ export function Submarine() {
 
   return (
     <group ref={meshRef}>
-      <primitive object={scene} scale={1.5} />
+      <primitive object={scene} scale={1.5} rotation-y={Math.PI} />
     </group>
   );
 }
