@@ -16,8 +16,6 @@ export function App() {
     skyRayleigh: { value: 0.0, min: 0 },
   });
 
-  });
-
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#3FA9F5" }}>
       <Leva collapsed />
