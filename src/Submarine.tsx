@@ -34,6 +34,7 @@ export function Submarine() {
   const config = useControls("Submarine Tuning", {
     Movement: folder({
       speed: { value: 0.25, min: 0.1, max: 1.0, step: 0.01 },
+      sidewaysSpeed: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
       acceleration: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
       drag: { value: 0.15, min: 0.01, max: 0.5, step: 0.01 },
     }),
@@ -57,24 +58,31 @@ export function Submarine() {
 
     const dt = delta * 60; // Normalize to 60fps
 
-    // 1. Forward/Backward Movement
+    // 1. Translation (Forward/Backward + Strafe)
     let moveInput = 0;
     if (keys.current["KeyW"]) moveInput = 1;
     if (keys.current["KeyS"]) moveInput = -0.6;
 
+    let sideInput = 0;
+    if (keys.current["KeyA"]) sideInput = 1;
+    if (keys.current["KeyD"]) sideInput = -1;
+
     const forwardDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
-    const targetVel = forwardDir.multiplyScalar(moveInput * config.speed);
+    const lateralDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
+    
+    const targetVel = forwardDir.multiplyScalar(moveInput * config.speed)
+      .add(lateralDir.multiplyScalar(sideInput * config.sidewaysSpeed));
     
     // Smooth acceleration and strong drag
     velocity.current.lerp(targetVel, config.acceleration * dt);
-    if (moveInput === 0) {
-      velocity.current.lerp(new THREE.Vector3(), config.drag * dt);
+    if (moveInput === 0 && sideInput === 0) {
+      velocity.current.lerp(new THREE.Vector3(0, velocity.current.y, 0), config.drag * dt);
     }
 
-    // 2. Turning (Yaw)
+    // 2. Turning (Yaw) - Q/E Only
     let turnInput = 0;
-    if (keys.current["KeyA"] || keys.current["KeyQ"]) turnInput = 1;
-    if (keys.current["KeyD"] || keys.current["KeyE"]) turnInput = -1;
+    if (keys.current["KeyQ"]) turnInput = 1;
+    if (keys.current["KeyE"]) turnInput = -1;
 
     targetRotation.current += turnInput * config.turnSpeed * dt;
     currentRotation.current = THREE.MathUtils.lerp(currentRotation.current, targetRotation.current, config.turnSmoothing * dt);
