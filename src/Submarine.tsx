@@ -44,6 +44,11 @@ export function Submarine() {
     Vertical: folder({
       verticalSpeed: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
       verticalSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
+    }),
+    Camera: folder({
+      distance: { value: 15, min: 5, max: 40, step: 1 },
+      height: { value: 6, min: -5, max: 20, step: 0.5 },
+      camSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
     })
   });
 
@@ -100,10 +105,10 @@ export function Submarine() {
 
     // 6. Camera (Smooth Follow)
     camYaw.current = THREE.MathUtils.lerp(camYaw.current, currentRotation.current, 0.08 * dt);
-    const camOffset = new THREE.Vector3(0, 6, 15).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw.current);
+    const camOffset = new THREE.Vector3(0, config.height, config.distance).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw.current);
     const camPos = currentPos.current.clone().add(camOffset);
     
-    state.camera.position.lerp(camPos, 0.1 * dt);
+    state.camera.position.lerp(camPos, config.camSmoothing * dt);
     state.camera.lookAt(currentPos.current.x, currentPos.current.y + 1, currentPos.current.z);
 
     // 7. Ripples
