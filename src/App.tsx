@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { Leva } from "leva";
 import { boot } from "./platform/boot";
 import WaterFloor from "./components/WaterFloor";
+import SeabedFloor from "./components/WaterFloor/components/SeabedFloor";
 import { BridgeSync } from "./BridgeSync";
 import { SubmarineRippleEmitter } from "./SubmarineRippleEmitter";
 
@@ -40,6 +41,7 @@ export function App() {
           {/* We'll position the water at Y=8 to match the original level */}
           <group position={[0, 8, 0]}>
             <WaterFloor />
+            <SeabedFloor />
           </group>
         </Canvas>
       </div>
