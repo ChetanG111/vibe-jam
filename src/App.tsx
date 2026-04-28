@@ -1,19 +1,31 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
-import { PerspectiveCamera, Sky } from "@react-three/drei";
+import { PerspectiveCamera, Sky, KeyboardControls } from "@react-three/drei";
 import { useControls, folder, Leva } from "leva";
 import WaterFloor from "./components/WaterFloor";
 import SeabedFloor from "./components/WaterFloor/components/SeabedFloor";
+import Rocks from "./components/WaterFloor/components/Rocks";
 import { Submarine } from "./Submarine";
 import Editor from "./pages/Editor";
 
+const keyboardMap = [
+  { name: "forward", keys: ["ArrowUp", "KeyW"] },
+  { name: "backward", keys: ["ArrowDown", "KeyS"] },
+  { name: "left", keys: ["ArrowLeft", "KeyA"] },
+  { name: "right", keys: ["ArrowRight", "KeyD"] },
+  { name: "up", keys: ["Space"] },
+  { name: "down", keys: ["ShiftLeft", "ShiftRight"] },
+  { name: "turnLeft", keys: ["KeyQ"] },
+  { name: "turnRight", keys: ["KeyE"] },
+];
+
 const MainScene = () => {
   const { ambient, sun, fogColor, fogNear, fogFar, skyTurbidity, skyRayleigh } = useControls("Environment", {
-    ambient: { value: 0.6, min: 0 },
-    sun: { value: 2.0, min: 0 },
-    fogColor: "#0A2A3A",
-    fogNear: { value: 100, min: 0 },
-    fogFar: { value: 1500, min: 500 },
+    ambient: { value: 0.02, min: 0, step: 0.01 },
+    sun: { value: 0.05, min: 0, step: 0.01 },
+    fogColor: "#02080a",
+    fogNear: { value: 1, min: 0 },
+    fogFar: { value: 5000, min: 100 },
     skyTurbidity: { value: 0.1, min: 0 },
     skyRayleigh: { value: 0.0, min: 0 },
   });
@@ -21,35 +33,32 @@ const MainScene = () => {
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#3FA9F5" }}>
       <Leva collapsed />
-      <Canvas shadows>
-        <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
-        <PerspectiveCamera makeDefault position={[0, 15, 30]} fov={55} />
-        
-        {/* Lights */}
-        <ambientLight intensity={ambient} />
-        <directionalLight 
-          position={[100, 500, 100]} 
-          intensity={sun} 
-          castShadow 
-          shadow-mapSize={[2048, 2048]} 
-          shadow-camera-left={-500}
-          shadow-camera-right={500}
-          shadow-camera-top={500}
-          shadow-camera-bottom={-500}
-        />
-
-        {/* Anime Water System */}
-        <group position={[0, 0, 0]}>
-          <WaterFloor />
-          <SeabedFloor 
-            seabedDepthOverride={-60} 
-            seabedScaleOverride={0.10} 
+      <KeyboardControls map={keyboardMap}>
+        <Canvas shadows>
+          <fog attach="fog" args={[fogColor, fogNear, fogFar]} />
+          <PerspectiveCamera makeDefault position={[0, 15, 30]} fov={55} />
+          
+          <ambientLight intensity={ambient} />
+          <directionalLight 
+            position={[100, 500, 100]} 
+            intensity={sun} 
+            castShadow 
+            shadow-mapSize={[2048, 2048]} 
           />
-        </group>
 
-        <Sky sunPosition={[100, 100, 100]} turbidity={skyTurbidity} rayleigh={skyRayleigh} mieCoefficient={0.005} mieDirectionalG={0.8} />
-        <Submarine />
-      </Canvas>
+          <group position={[0, 0, 0]}>
+            <WaterFloor />
+            <SeabedFloor 
+              seabedDepthOverride={-60} 
+              seabedScaleOverride={0.10} 
+            />
+            <Rocks seabedDepthOverride={-60} />
+          </group>
+
+          <Sky sunPosition={[100, 100, 100]} turbidity={skyTurbidity} rayleigh={skyRayleigh} mieCoefficient={0.005} mieDirectionalG={0.8} />
+          <Submarine />
+        </Canvas>
+      </KeyboardControls>
     </div>
   );
 }
