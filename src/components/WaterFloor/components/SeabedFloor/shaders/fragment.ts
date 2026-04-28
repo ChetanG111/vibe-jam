@@ -13,7 +13,9 @@ export const FRAG = /* glsl */ `
   uniform vec2  uCamXZ;
 
   varying vec2 vWorldPos;
+  varying vec3 vViewPos;
 
+  // Standard hash/smin/voronoi functions (omitted for brevity in replace call, but keeping logic)
   vec2 hash2(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
@@ -53,14 +55,26 @@ export const FRAG = /* glsl */ `
   }
 
   void main() {
+    // 1. Faceted Normal Calculation
+    vec3 fdx = dFdx(vViewPos);
+    vec3 fdy = dFdy(vViewPos);
+    vec3 normal = normalize(cross(fdx, fdy));
+
+    // 2. Base Terrain Color & Lighting
+    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+    float diffuse = max(dot(normal, lightDir), 0.0);
+    
+    // 3. Voronoi Caustics
     vec2  uv   = vWorldPos * uScale + vec2(uFlowX, uFlowZ) * uTime;
     float f1   = voronoiF1(uv);
     float sf1  = voronoiSF1(uv);
     float edge = f1 - sf1;
-
-    float t     = smoothstep(uEdgeThreshold - uEdgeSoftness,
-                             uEdgeThreshold + uEdgeSoftness, edge);
-    vec3  color = mix(uDeepColor, uHighlight, t);
+    float causticT = smoothstep(uEdgeThreshold - uEdgeSoftness,
+                              uEdgeThreshold + uEdgeSoftness, edge);
+    
+    // 4. Combine
+    vec3 terrainBase = mix(uDeepColor * 0.7, uDeepColor, diffuse);
+    vec3 color = mix(terrainBase, uHighlight, causticT * 0.5);
 
     float dist  = length(vWorldPos - uCamXZ);
     float fade  = 1.0 - pow(clamp(dist / uFadeDistance, 0.0, 1.0), uFadeStrength);

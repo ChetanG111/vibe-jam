@@ -104,7 +104,7 @@ export default function SeabedFloor({
       renderOrder={0}
       receiveShadow
     >
-      <planeGeometry args={[2000, 2000]} />
+      <planeGeometry args={[2000, 2000, 200, 200]} />
       <primitive object={material} attach="material" />
     </mesh>
   );
