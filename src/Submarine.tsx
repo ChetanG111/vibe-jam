@@ -46,7 +46,7 @@ export function Submarine() {
       turnMomentum: { value: 0.92, min: 0.8, max: 0.99, step: 0.01 },
     }),
     Vertical: folder({
-      buoyancy: { value: 0.0004, min: 0, max: 0.01, step: 0.0001 },
+      buoyancy: { value: 0, min: -0.01, max: 0.01, step: 0.0001 },
       diveForce: { value: 0.01, min: 0, max: 0.05, step: 0.001 },
       neutralBuoyancyOffset: { value: 0, min: -50, max: 10, step: 0.5 },
       verticalDrag: { value: 0.08, min: 0.01, max: 0.5, step: 0.01 },
@@ -103,9 +103,10 @@ export function Submarine() {
     currentPosition.current.add(velocity.current.clone().multiplyScalar(dt));
     
     // 6. Polish: Drift & Sway
-    // Sideways drift during turns
+    // Only apply lateral drift if we actually have forward momentum
+    const speed = velocity.current.length();
     const lateralDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
-    const driftForce = lateralDir.multiplyScalar(-angularVelocity.current * config.driftAmount);
+    const driftForce = lateralDir.multiplyScalar(-angularVelocity.current * speed * config.driftAmount);
     currentPosition.current.add(driftForce.multiplyScalar(dt));
 
     // Subtle Idle Sway
