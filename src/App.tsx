@@ -28,8 +28,8 @@ const MainScene = () => {
   const { fogType, fogColor, fogNear, fogFar, fogDensity } = useControls("Fog Settings", {
     fogType: { value: "linear", options: ["linear", "exp2"], label: "Type" },
     fogColor: { value: "#042c48", label: "Color" }, 
-    fogNear: { value: 10, min: 0, max: 1000, step: 1, label: "Start (Radius)", render: (get) => get("Fog Settings.fogType") === "linear" },
-    fogFar: { value: 350, min: 10, max: 5000, step: 10, label: "End (Distance)", render: (get) => get("Fog Settings.fogType") === "linear" },
+    fogNear: { value: 0, min: 0, max: 1000, step: 1, label: "Start (Radius)", render: (get) => get("Fog Settings.fogType") === "linear" },
+    fogFar: { value: 1000, min: 10, max: 5000, step: 10, label: "End (Distance)", render: (get) => get("Fog Settings.fogType") === "linear" },
     fogDensity: { value: 0.005, min: 0, max: 0.1, step: 0.0001, label: "Intensity (Density)", render: (get) => get("Fog Settings.fogType") === "exp2" },
   });
 
