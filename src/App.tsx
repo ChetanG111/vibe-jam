@@ -4,6 +4,7 @@ import { Leva } from "leva";
 import { boot } from "./platform/boot";
 import WaterFloor from "./components/WaterFloor";
 import { BridgeSync } from "./BridgeSync";
+import { SubmarineRippleEmitter } from "./SubmarineRippleEmitter";
 
 function VanillaGame() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -34,6 +35,7 @@ export function App() {
           }}
         >
           <BridgeSync />
+          <SubmarineRippleEmitter />
           <ambientLight intensity={1} />
           {/* We'll position the water at Y=8 to match the original level */}
           <group position={[0, 8, 0]}>
