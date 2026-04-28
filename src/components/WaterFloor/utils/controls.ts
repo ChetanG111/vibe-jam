@@ -14,7 +14,7 @@ export function useWaterFloorControls() {
       noiseScale:     { value: 1.2,   min: 0.1,  max: 10,   step: 0.01,  label: "Noise Scale" },
       noiseFlowSpeed: { value: 0.08,  min: 0,    max: 2,    step: 0.01,  label: "Noise Flow Speed" },
       distortAmount:  { value: 0.35,  min: 0,    max: 3,    step: 0.01,  label: "Distort Amount" },
-      deepColor:      { value: "#1E5D7A",                                  label: "Deep Color" },
+      deepColor:      { value: "#0590da",                                  label: "Deep Color" },
       midColor:       { value: "#FFFFFF",                                  label: "Mid Color" },
       midPos:         { value: 0.40,  min: 0.001, max: 0.999, step: 0.001, label: "Mid Pos" },
       highlightColor: { value: "#ffffff",                                  label: "Highlight Color" },
