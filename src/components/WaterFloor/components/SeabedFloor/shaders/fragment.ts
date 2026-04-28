@@ -13,20 +13,26 @@ export const FRAG = /* glsl */ `
   uniform vec2  uCamXZ;
 
   // ── Headlight uniforms ──────────────────────────────────────────────────────
-  uniform vec3  uSubPos;        // submarine world-space position
-  uniform vec3  uSubForward;    // submarine world-space forward direction (normalised)
+  uniform vec3  uSubPos;
+  uniform vec3  uSubForward;
   uniform vec3  uHeadlightColor;
   uniform float uHeadlightIntensity;
   uniform float uHeadlightDistance;
-  uniform float uHeadlightAngle;   // half-cone angle in radians
-  uniform float uHeadlightPenumbra;// 0..1 soft edge fraction
-  uniform float uHeadlightOn;      // 1.0 = on, 0.0 = off
+  uniform float uHeadlightAngle;
+  uniform float uHeadlightPenumbra;
+  uniform float uHeadlightOn;
+
+  // ── Camera Light uniforms ───────────────────────────────────────────────────
+  uniform vec3  uCamPos3;
+  uniform vec3  uCamLightColor;
+  uniform float uCamLightIntensity;
+  uniform float uCamLightDistance;
+  uniform float uCamLightOn;
 
   varying vec2 vWorldPos;
   varying vec3 vViewPos;
-  varying vec3 vWorldPos3;  // full XYZ world position of this fragment
+  varying vec3 vWorldPos3;
 
-  // Standard hash/smin/voronoi functions
   vec2 hash2(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
@@ -66,16 +72,13 @@ export const FRAG = /* glsl */ `
   }
 
   void main() {
-    // 1. Faceted Normal Calculation
     vec3 fdx = dFdx(vViewPos);
     vec3 fdy = dFdy(vViewPos);
     vec3 normal = normalize(cross(fdx, fdy));
 
-    // 2. Base Terrain Color & Lighting
     vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
     float diffuse = max(dot(normal, lightDir), 0.0);
     
-    // 3. Voronoi Caustics
     vec2  uv   = vWorldPos * uScale + vec2(uFlowX, uFlowZ) * uTime;
     float f1   = voronoiF1(uv);
     float sf1  = voronoiSF1(uv);
@@ -83,33 +86,40 @@ export const FRAG = /* glsl */ `
     float causticT = smoothstep(uEdgeThreshold - uEdgeSoftness,
                               uEdgeThreshold + uEdgeSoftness, edge);
     
-    // 4. Base color
     vec3 terrainBase = mix(uDeepColor * 0.7, uDeepColor, diffuse);
     vec3 color = mix(terrainBase, uHighlight, causticT * 0.5);
 
-    // 5. Headlight (spotlight cone computed in world space)
+    // 1. Headlight (Spotlight)
     if (uHeadlightOn > 0.5) {
-      vec3  fragWorldPos = vec3(vWorldPos.x, uSubPos.y - uHeadlightDistance * 0.3, vWorldPos.y);
-      // Use the actual 3D world position passed via varying
       vec3  toFrag   = vWorldPos3 - uSubPos;
       float distToFrag = length(toFrag);
       vec3  toFragN  = toFrag / max(distToFrag, 0.001);
 
-      // Cone test: angle between forward and direction-to-fragment
       float cosAngle    = dot(uSubForward, toFragN);
       float cosInner    = cos(uHeadlightAngle * (1.0 - uHeadlightPenumbra));
       float cosOuter    = cos(uHeadlightAngle);
       float coneFactor  = smoothstep(cosOuter, cosInner, cosAngle);
 
-      // Distance falloff (inverse square, clamped)
       float distFactor  = 1.0 - clamp(distToFrag / uHeadlightDistance, 0.0, 1.0);
       distFactor = distFactor * distFactor;
 
-      // Surface normal facing: seabed faces up (+Y), so more light when beam comes from above
       float nDotL = max(dot(normal, -toFragN), 0.0);
-
       float headlightAtten = coneFactor * distFactor * nDotL * uHeadlightIntensity * 0.08;
       color += uHeadlightColor * headlightAtten;
+    }
+
+    // 2. Camera Light (Dim Point Light)
+    if (uCamLightOn > 0.5) {
+      vec3  toCam = vWorldPos3 - uCamPos3;
+      float distToCam = length(toCam);
+      float distFactor = 1.0 - clamp(distToCam / uCamLightDistance, 0.0, 1.0);
+      distFactor = pow(distFactor, 2.0); // Smooth falloff
+
+      vec3  toCamN = toCam / max(distToCam, 0.001);
+      float nDotL = max(dot(normal, -toCamN), 0.0);
+
+      float camLightAtten = distFactor * nDotL * uCamLightIntensity * 0.05;
+      color += uCamLightColor * camLightAtten;
     }
 
     float dist  = length(vWorldPos - uCamXZ);

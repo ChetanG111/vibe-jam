@@ -78,6 +78,12 @@ export default function SeabedFloor({
           uHeadlightAngle:      { value: 0.32 },
           uHeadlightPenumbra:   { value: 0.4 },
           uHeadlightOn:         { value: 1.0 },
+          // Camera Light
+          uCamPos3:             { value: new THREE.Vector3() },
+          uCamLightColor:       { value: new THREE.Color(1, 1, 1) },
+          uCamLightIntensity:   { value: 5.0 },
+          uCamLightDistance:    { value: 100.0 },
+          uCamLightOn:          { value: 1.0 },
         },
       }),
     []
@@ -110,6 +116,13 @@ export default function SeabedFloor({
     u.uHeadlightAngle.value     = sl.headlight.angle;
     u.uHeadlightPenumbra.value  = sl.headlight.on ? 0.4 : 0;
     u.uHeadlightOn.value        = sl.headlight.on ? 1.0 : 0.0;
+
+    // Camera Light
+    u.uCamPos3.value.set(sl.camera.position.x, sl.camera.position.y, sl.camera.position.z);
+    u.uCamLightColor.value.setRGB(sl.camera.color.r, sl.camera.color.g, sl.camera.color.b);
+    u.uCamLightIntensity.value = sl.camera.intensity;
+    u.uCamLightDistance.value  = sl.camera.distance;
+    u.uCamLightOn.value        = sl.camera.on ? 1.0 : 0.0;
 
     meshRef.current.position.x = camera.position.x;
     meshRef.current.position.z = camera.position.z;

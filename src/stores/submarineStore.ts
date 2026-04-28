@@ -16,4 +16,12 @@ export const submarineStore = {
     angle: 0.32,
     color: { r: 0.72, g: 0.91, b: 1.0 },
   },
+  /** Camera world position and its dimmer light settings */
+  camera: {
+    position: { x: 0, y: 0, z: 0 },
+    on: true,
+    intensity: 5,
+    distance: 100,
+    color: { r: 0.6, g: 0.8, b: 1.0 },
+  },
 };

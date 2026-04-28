@@ -59,6 +59,13 @@ export function Submarine() {
       headlightDistance:  { value: 30,   min: 1,    step: 1,    label: "Distance" },
       headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2,  step: 0.01, label: "Cone Angle" },
       headlightPenumbra:  { value: 0.4,  min: 0,    max: 1,            step: 0.05, label: "Penumbra" },
+      headlightOffset:    { value: 2.2,  min: -10,  max: 10,           step: 0.1,  label: "Nose Offset" },
+    }),
+    CameraLight: folder({
+      camLightOn:        { value: true,      label: "On" },
+      camLightColor:     { value: "#ffffff", label: "Color" },
+      camLightIntensity: { value: 5,    min: 0,    step: 0.1,  label: "Intensity" },
+      camLightDistance:  { value: 100,  min: 1,    step: 1,    label: "Range" },
     }),
   });
 
@@ -76,8 +83,8 @@ export function Submarine() {
     if (keys.current["KeyA"]) sideInput = 1;
     if (keys.current["KeyD"]) sideInput = -1;
 
-    // Forward in world space = -Z rotated by currentRotation
-    const forwardDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
+    // Forward in world space = +Z rotated by currentRotation
+    const forwardDir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
     const lateralDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), currentRotation.current);
     
     const targetVel = forwardDir.clone().multiplyScalar(moveInput * config.speed)
@@ -128,7 +135,7 @@ export function Submarine() {
 
     // 6. Camera (Smooth Follow)
     camYaw.current = THREE.MathUtils.lerp(camYaw.current, currentRotation.current, 0.08 * dt);
-    const camOffset = new THREE.Vector3(0, config.height, config.distance).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw.current);
+    const camOffset = new THREE.Vector3(0, config.height, -config.distance).applyAxisAngle(new THREE.Vector3(0, 1, 0), camYaw.current);
     const camPos = currentPos.current.clone().add(camOffset);
     
     state.camera.position.lerp(camPos, config.camSmoothing * dt);
@@ -145,9 +152,11 @@ export function Submarine() {
 
     // 8. Publish submarine state to store so shaders can read it
     const p = currentPos.current;
-    submarineStore.position.x = p.x;
-    submarineStore.position.y = p.y;
-    submarineStore.position.z = p.z;
+    const lightWorldPos = p.clone().add(forwardDir.clone().multiplyScalar(config.headlightOffset));
+    
+    submarineStore.position.x = lightWorldPos.x;
+    submarineStore.position.y = lightWorldPos.y + 0.2; // Slight vertical offset for the light bulb
+    submarineStore.position.z = lightWorldPos.z;
     submarineStore.forward.x = forwardDir.x;
     submarineStore.forward.y = forwardDir.y;
     submarineStore.forward.z = forwardDir.z;
@@ -159,11 +168,24 @@ export function Submarine() {
     submarineStore.headlight.color.r   = c.r;
     submarineStore.headlight.color.g   = c.g;
     submarineStore.headlight.color.b   = c.b;
+
+    // 9. Camera Light & Position to store
+    const cp = state.camera.position;
+    submarineStore.camera.position.x = cp.x;
+    submarineStore.camera.position.y = cp.y;
+    submarineStore.camera.position.z = cp.z;
+    const cc = new THREE.Color(config.camLightColor);
+    submarineStore.camera.on        = config.camLightOn;
+    submarineStore.camera.intensity = config.camLightIntensity;
+    submarineStore.camera.distance  = config.camLightDistance;
+    submarineStore.camera.color.r   = cc.r;
+    submarineStore.camera.color.g   = cc.g;
+    submarineStore.camera.color.b   = cc.b;
   });
 
   return (
     <group ref={meshRef}>
-      <primitive object={scene} scale={1.5} rotation-y={Math.PI} />
+      <primitive object={scene} scale={1.5} rotation-y={0} />
     </group>
   );
 }
