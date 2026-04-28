@@ -7,13 +7,15 @@ import { Submarine } from "./Submarine";
 
 export function App() {
   const { ambient, sun, fogColor, fogNear, fogFar, skyTurbidity, skyRayleigh } = useControls("Environment", {
-    ambient: { value: 0.6, min: 0, max: 2 },
-    sun: { value: 2.0, min: 0, max: 10 },
+    ambient: { value: 0.6, min: 0 },
+    sun: { value: 2.0, min: 0 },
     fogColor: "#0A2A3A",
-    fogNear: { value: 100, min: 0, max: 1000 },
-    fogFar: { value: 1500, min: 500, max: 5000 },
-    skyTurbidity: { value: 0.1, min: 0, max: 20 },
-    skyRayleigh: { value: 0.0, min: 0, max: 10 },
+    fogNear: { value: 100, min: 0 },
+    fogFar: { value: 1500, min: 500 },
+    skyTurbidity: { value: 0.1, min: 0 },
+    skyRayleigh: { value: 0.0, min: 0 },
+  });
+
   });
 
   return (

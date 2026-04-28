@@ -34,29 +34,29 @@ export function Submarine() {
   // --- Dead Simple Tuning (Leva) ---
   const config = useControls("Submarine Tuning", {
     Movement: folder({
-      speed: { value: 0.25, min: 0.1, max: 1.0, step: 0.01 },
-      sidewaysSpeed: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
-      acceleration: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
-      drag: { value: 0.15, min: 0.01, max: 0.5, step: 0.01 },
+      speed: { value: 0.25, min: 0.1, step: 0.01 },
+      sidewaysSpeed: { value: 0.15, min: 0.05, step: 0.01 },
+      acceleration: { value: 0.1, min: 0.01, step: 0.01 },
+      drag: { value: 0.15, min: 0.01, step: 0.01 },
     }),
     Rotation: folder({
-      turnSpeed: { value: 0.04, min: 0.01, max: 0.1, step: 0.005 },
-      turnSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
+      turnSpeed: { value: 0.04, min: 0.01, step: 0.005 },
+      turnSmoothing: { value: 0.1, min: 0.01, step: 0.01 },
     }),
     Vertical: folder({
-      verticalSpeed: { value: 0.15, min: 0.05, max: 0.5, step: 0.01 },
-      verticalSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
+      verticalSpeed: { value: 0.15, min: 0.05, step: 0.01 },
+      verticalSmoothing: { value: 0.1, min: 0.01, step: 0.01 },
     }),
     Camera: folder({
-      distance: { value: 37, min: 5, max: 50, step: 1 },
-      height: { value: 16.0, min: -5, max: 30, step: 0.5 },
-      camSmoothing: { value: 0.1, min: 0.01, max: 0.5, step: 0.01 },
+      distance: { value: 37, min: 5, step: 1 },
+      height: { value: 16.0, min: -5, step: 0.5 },
+      camSmoothing: { value: 0.1, min: 0.01, step: 0.01 },
     }),
     Headlight: folder({
       headlightOn:        { value: true,      label: "On" },
       headlightColor:     { value: "#b8e8ff", label: "Color" },
-      headlightIntensity: { value: 12,   min: 0,    max: 50,           step: 0.5,  label: "Intensity" },
-      headlightDistance:  { value: 30,   min: 1,    max: 100,          step: 1,    label: "Distance" },
+      headlightIntensity: { value: 12,   min: 0,    step: 0.5,  label: "Intensity" },
+      headlightDistance:  { value: 30,   min: 1,    step: 1,    label: "Distance" },
       headlightAngle:     { value: 0.32, min: 0.05, max: Math.PI / 2,  step: 0.01, label: "Cone Angle" },
       headlightPenumbra:  { value: 0.4,  min: 0,    max: 1,            step: 0.05, label: "Penumbra" },
     }),
