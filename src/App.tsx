@@ -26,7 +26,7 @@ export function App() {
           <WaterFloor />
           <SeabedFloor 
             seabedDepthOverride={-15} 
-            seabedScale={0.15} 
+            seabedScaleOverride={0.15} 
             colorOverride="#1a3a5c" 
             colorTopOverride="#59c0e8" 
           />

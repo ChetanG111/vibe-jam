@@ -16,6 +16,7 @@ import { useSeabedControls } from "./utils/controls";
 
 interface SeabedFloorProps {
   seabedDepthOverride?: number;
+  seabedScaleOverride?: number;
   colorOverride?: string;
   colorTopOverride?: string;
   fadeDistanceOverride?: number;
@@ -24,6 +25,7 @@ interface SeabedFloorProps {
 
 export default function SeabedFloor({
   seabedDepthOverride,
+  seabedScaleOverride,
   colorOverride,
   colorTopOverride,
   fadeDistanceOverride,
@@ -76,7 +78,7 @@ export default function SeabedFloor({
   useFrame(({ camera }, delta) => {
     const u = material.uniforms;
     u.uTime.value         += delta;
-    u.uScale.value         = seabedScale;
+    u.uScale.value         = seabedScaleOverride ?? seabedScale;
     u.uCellSpeed.value     = cellSpeed;
     u.uFlowX.value         = flowX;
     u.uFlowZ.value         = flowZ;
