@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER } from '../shaders/skyShader';
-import { SKY_PRESETS, CONFIG } from '../config';
+import { CONFIG } from '../config';
 import { CLOUD_VERTEX_SHADER, CLOUD_FRAGMENT_SHADER } from '../shaders/cloudShader';
 
 export class Atmosphere {

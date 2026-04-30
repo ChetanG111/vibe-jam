@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { CONFIG, SKY_PRESETS } from './config';
+import { CONFIG } from './config';
 import { WATER_VERTEX_SHADER, WATER_FRAGMENT_SHADER } from './shaders/waterShader';
 import { getWaterHeight } from './utils/math';
 import { Submarine } from './entities/Submarine';
@@ -77,7 +77,7 @@ class VibeScene {
       () => this.terrain.createCorals(),
       (v) => this.waterMat.uniforms.uOpacity.value = v,
       (v) => this.waterMat.uniforms.uFoamStrength.value = v,
-      (v) => this.updateSkyPreset(v),
+      () => this.updateSkyPreset(),
       (v) => this.atmosphere.updateCloudCount(v)
     );
 
@@ -135,7 +135,7 @@ class VibeScene {
     }
   }
 
-  private updateSkyPreset(index: number) {
+  private updateSkyPreset() {
     this.atmosphere.updateSkyColors();
     // Force update of fog and background colors if not underwater
     if (this.camera.position.y >= 0) {
