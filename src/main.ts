@@ -638,17 +638,21 @@ class VibeScene {
   private addChunk(cx: number, cz: number) {
     const key = `${cx},${cz}`;
     const size = this.config.chunkSize;
-    const segments = 24; // Resolution per chunk
+    const segments = 25; // 100 / 25 = 4.0 units per segment
     
     const xOffset = cx * size;
     const zOffset = cz * size;
 
     // --- Water Chunk ---
     const waterGeo = new THREE.PlaneGeometry(size, size, segments, segments);
-    // Add jitter for low-poly look (vertex displacement in shader handles waves)
+    // Add DETERMINISTIC jitter for low-poly look (so edges match between chunks)
     const wPos = waterGeo.attributes.position;
     for (let i = 0; i < wPos.count; i++) {
-      wPos.setZ(i, (Math.random() - 0.5) * 0.4);
+      const vx = wPos.getX(i) + xOffset;
+      const vz = wPos.getY(i) + zOffset;
+      // Deterministic pseudo-random jitter based on world coordinates
+      const jitter = (Math.sin(vx * 1.5) * Math.cos(vz * 1.5) * 0.4);
+      wPos.setZ(i, jitter);
     }
     const waterChunk = new THREE.Mesh(waterGeo, this.waterMat);
     waterChunk.rotation.x = -Math.PI / 2;
