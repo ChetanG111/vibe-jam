@@ -8,7 +8,7 @@ class VibeScene {
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private submarine: THREE.Group;
-  private water: THREE.Mesh;
+  private water!: THREE.Mesh;
   private clouds: THREE.Group[] = [];
   private waterVertices!: Float32Array;
   private waterOrigY!: Float32Array;
