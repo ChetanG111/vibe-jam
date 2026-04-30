@@ -27,11 +27,13 @@ export class Atmosphere {
     
     this.skyMat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor1: { value: new THREE.Color('#0A0A28') }, // Deep Top (Midnight Blue)
-        uColor2: { value: new THREE.Color('#3C2864') }, // Purple
-        uColor3: { value: new THREE.Color('#7B3B6B') }, // Magenta/Pink
-        uColor4: { value: new THREE.Color('#FF7850') }, // Orange
-        uColor5: { value: new THREE.Color('#FFD0A1') }, // Horizon Glow
+        uColor1: { value: new THREE.Color('#1B2A4A') }, // Deep Blue
+        uColor2: { value: new THREE.Color('#2C3F73') }, // Indigo
+        uColor3: { value: new THREE.Color('#4A4F8A') }, // Blue-purple
+        uColor4: { value: new THREE.Color('#7A6FA3') }, // Muted Lavender
+        uColor5: { value: new THREE.Color('#C4879A') }, // Pinkish
+        uColor6: { value: new THREE.Color('#F2A07A') }, // Peach
+        uColor7: { value: new THREE.Color('#F7B267') }, // Warm Orange
       },
       vertexShader: SKY_VERTEX_SHADER,
       fragmentShader: SKY_FRAGMENT_SHADER,
@@ -137,13 +139,15 @@ export class Atmosphere {
   private createClouds(count: number) {
     this.cloudMat = new THREE.ShaderMaterial({
       uniforms: {
-        uSkyTop: { value: new THREE.Color('#3C2864') },
-        uSkyMid: { value: new THREE.Color('#7B3B6B') },
-        uSkyBottom: { value: new THREE.Color('#FF7850') },
-        uHorizonColor: { value: new THREE.Color('#FFD0A1') },
+        uSkyTop: { value: new THREE.Color('#4A4F8A') }, // Blue-purple
+        uSkyMid: { value: new THREE.Color('#C4879A') }, // Pinkish
+        uSkyBottom: { value: new THREE.Color('#F2A07A') }, // Peach
+        uHorizonColor: { value: new THREE.Color('#F7B267') }, // Warm Orange
       },
       vertexShader: CLOUD_VERTEX_SHADER,
       fragmentShader: CLOUD_FRAGMENT_SHADER,
+      transparent: true,
+      depthWrite: false, // Prevents clouds from clipping each other awkwardly when transparent
     });
 
     for (let i = 0; i < count; i++) {
@@ -173,11 +177,28 @@ export class Atmosphere {
     this.skyMesh.position.copy(camPos);
     this.cloudGroup.position.copy(camPos);
 
-    // Drift clouds in local space
+    const wrapRadius = 500;
     this.clouds.forEach((cloud, index) => {
+      // 1. Natural drift
       cloud.position.x += 0.05 * (1 + (index % 3) * 0.4);
-      // Wrap in a large enough radius
-      if (cloud.position.x > 500) cloud.position.x = -500;
+      
+      // 2. Infinite wrapping relative to camera
+      // We want the clouds to stay within a box/circle around the player
+      // Since cloudGroup follows camPos, the 'cloud.position' is relative to camPos.
+      // We just need to wrap the local positions.
+      if (cloud.position.x > wrapRadius) cloud.position.x -= wrapRadius * 2;
+      if (cloud.position.x < -wrapRadius) cloud.position.x += wrapRadius * 2;
+      if (cloud.position.z > wrapRadius) cloud.position.z -= wrapRadius * 2;
+      if (cloud.position.z < -wrapRadius) cloud.position.z += wrapRadius * 2;
+
+      // 3. Preserve donut hole (don't wrap into the center)
+      const distSq = cloud.position.x * cloud.position.x + cloud.position.z * cloud.position.z;
+      if (distSq < 150 * 150) {
+        // Push it out to the edge of the donut
+        const angle = Math.atan2(cloud.position.z, cloud.position.x);
+        cloud.position.x = Math.cos(angle) * 155;
+        cloud.position.z = Math.sin(angle) * 155;
+      }
     });
 
     // But for infinite feel, we can follow camera

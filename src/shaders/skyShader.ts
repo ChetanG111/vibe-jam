@@ -8,11 +8,13 @@ void main() {
 `;
 
 export const SKY_FRAGMENT_SHADER = `
-uniform vec3 uColor1; // Deep Top
-uniform vec3 uColor2; // Purple
-uniform vec3 uColor3; // Magenta/Pink
-uniform vec3 uColor4; // Orange
-uniform vec3 uColor5; // Horizon Glow
+uniform vec3 uColor1;
+uniform vec3 uColor2;
+uniform vec3 uColor3;
+uniform vec3 uColor4;
+uniform vec3 uColor5;
+uniform vec3 uColor6;
+uniform vec3 uColor7;
 varying vec3 vWorldPosition;
 
 void main() {
@@ -21,19 +23,25 @@ void main() {
     
     vec3 color;
     
-    // Spread the gradient out so the purple-to-orange transition is visible in the main view
-    if (t > 0.6) {
-        // Deep Blue to Purple
-        color = mix(uColor2, uColor1, smoothstep(0.6, 1.0, t));
-    } else if (t > 0.25) {
-        // Purple to Magenta
-        color = mix(uColor3, uColor2, smoothstep(0.25, 0.6, t));
-    } else if (t > 0.05) {
-        // Magenta to Orange
-        color = mix(uColor4, uColor3, smoothstep(0.05, 0.25, t));
+    // Proportional mapping to bring the top colors down into the visible field of view
+    if (t > 0.5) {
+        // Deep Blue to Indigo
+        color = mix(uColor2, uColor1, smoothstep(0.5, 1.0, t));
+    } else if (t > 0.3) {
+        // Indigo to Blue-purple
+        color = mix(uColor3, uColor2, smoothstep(0.3, 0.5, t));
+    } else if (t > 0.18) {
+        // Blue-purple to Muted Lavender
+        color = mix(uColor4, uColor3, smoothstep(0.18, 0.3, t));
+    } else if (t > 0.1) {
+        // Muted Lavender to Pinkish
+        color = mix(uColor5, uColor4, smoothstep(0.1, 0.18, t));
+    } else if (t > 0.04) {
+        // Pinkish to Peach
+        color = mix(uColor6, uColor5, smoothstep(0.04, 0.1, t));
     } else {
-        // Orange to Horizon Glow
-        color = mix(uColor5, uColor4, smoothstep(0.0, 0.05, t));
+        // Peach to Warm Orange
+        color = mix(uColor7, uColor6, smoothstep(0.0, 0.04, t));
     }
     
     gl_FragColor = vec4(color, 1.0);

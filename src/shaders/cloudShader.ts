@@ -29,8 +29,6 @@ void main() {
     vec3 normal = normalize(cross(fdx, fdy));
     
     // 2. Sample Sky Gradient based on world height
-    // We normalize the world height to a 0.0 - 1.0 range for the sky logic
-    // Clouds are between 5 and 50. Let's map that to the lower half of the sky gradient.
     float h = clamp(vWorldPosition.y / 150.0, 0.0, 1.0);
     
     vec3 skyColor;
@@ -40,22 +38,38 @@ void main() {
         skyColor = mix(uSkyBottom, uSkyMid, h * 2.0);
     }
     
-    // 3. Local Shading (Top is darker, Bottom catches horizon light)
+    // 3. User Request: 80% white, 20% sky blend
+    vec3 cloudBase = mix(vec3(0.95), skyColor, 0.2);
+    
+    // 4. Local Shading (Top is darker, Bottom catches horizon light)
     float localGrad = smoothstep(-3.0, 3.0, vLocalY);
     
     // Bottom lighting (under-glow)
     float underLight = max(dot(normal, vec3(0.0, -1.0, 0.0)), 0.0);
     
     // Mix it all together
-    // Base color is the sampled sky color at this height
-    vec3 finalColor = skyColor;
+    vec3 finalColor = cloudBase;
     
-    // Add local shadowing (darker at the top of the cloud)
-    finalColor *= (0.6 + localGrad * 0.4);
+    // Add local shadowing
+    finalColor *= (0.7 + localGrad * 0.3);
     
     // Apply horizon under-glow
-    finalColor = mix(finalColor, uHorizonColor, underLight * 0.7);
+    finalColor = mix(finalColor, uHorizonColor, underLight * 0.4);
     
-    gl_FragColor = vec4(finalColor, 1.0);
+    // 5. THE FADED LOOK (Transparency & Edge Softening)
+    // Global opacity
+    float alpha = 0.65;
+    
+    // Edge fade using view-space normal (Fresnel-like)
+    // This makes the edges of the low-poly blobs feel softer/thinner
+    vec3 viewDir = normalize(-vViewPosition);
+    float edgeFade = pow(max(dot(normal, viewDir), 0.0), 1.5);
+    alpha *= edgeFade;
+    
+    // Height-based fade (fade out at the very bottom/top slightly)
+    float heightFade = smoothstep(-4.0, -2.0, vLocalY) * smoothstep(4.0, 2.0, vLocalY);
+    alpha *= heightFade;
+
+    gl_FragColor = vec4(finalColor, alpha);
 }
 `;
