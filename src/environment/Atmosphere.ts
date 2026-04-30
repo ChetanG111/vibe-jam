@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { SKY_COLOR } from '../config';
 
 export class Atmosphere {
   public sun!: THREE.DirectionalLight;

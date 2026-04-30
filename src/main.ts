@@ -17,7 +17,7 @@ class VibeScene {
   private terrain!: Terrain;
   private atmosphere: Atmosphere;
   private wakeParticles: WakeParticles;
-  private uiManager: UIManager;
+
   
   private controls!: OrbitControls;
   private cameraMode: 'follow' | 'orbit' = 'follow';
@@ -69,7 +69,7 @@ class VibeScene {
     
     this.wakeParticles = new WakeParticles(this.scene);
 
-    this.uiManager = new UIManager(
+    new UIManager(
       (key, val) => (CONFIG as any)[key] = val,
       () => this.toggleCameraMode(),
       () => this.terrain.createRocks(),
