@@ -28,7 +28,8 @@ export class Terrain {
         uAmbientColor: { value: new THREE.Color(0x88ddff).multiplyScalar(0.5) },
         fogColor: { value: new THREE.Color(0x002233) },
         fogNear: { value: 2 },
-        fogFar: { value: 150 }
+        fogFar: { value: 150 },
+        uFloorBase: { value: CONFIG.floorDepth }
       },
       vertexShader: FLOOR_VERTEX_SHADER,
       fragmentShader: FLOOR_FRAGMENT_SHADER,
@@ -279,7 +280,7 @@ export class Terrain {
   private addChunk(cx: number, cz: number) {
     const key = `${cx},${cz}`;
     const size = CONFIG.chunkSize;
-    const segments = 25; 
+    const segments = CONFIG.terrainSegments; 
     const xOffset = cx * size;
     const zOffset = cz * size;
 
@@ -292,10 +293,11 @@ export class Terrain {
 
     // Floor is now a flat plane in JS, displaced in Shader for perfect stitching
     const floorGeo = new THREE.PlaneGeometry(size, size, segments, segments);
+    floorGeo.computeBoundingSphere();
+    if (floorGeo.boundingSphere) floorGeo.boundingSphere.radius += 10.0; // Account for shader displacement
     const floorChunk = new THREE.Mesh(floorGeo, this.floorMat);
     floorChunk.rotation.x = -Math.PI / 2;
     floorChunk.position.set(xOffset, CONFIG.floorDepth, zOffset);
-    floorChunk.frustumCulled = false;
     this.floorGroup.add(floorChunk);
     this.floorChunks.set(key, floorChunk);
   }

@@ -52,6 +52,7 @@ export const FLOOR_FRAGMENT_SHADER = /* glsl */ `
   uniform vec3 fogColor;
   uniform float fogNear;
   uniform float fogFar;
+  uniform float uFloorBase;
 
   void main() {
     // Generate flat shading normal from derivatives
@@ -65,7 +66,7 @@ export const FLOOR_FRAGMENT_SHADER = /* glsl */ `
     vec3 lighting = uAmbientColor + diffuse;
     
     // Subtle height-based coloring for more depth
-    float heightFactor = clamp((vWorldPos.y + 32.0) / 10.0, 0.0, 1.0);
+    float heightFactor = clamp((vWorldPos.y - uFloorBase) / 10.0, 0.0, 1.0);
     vec3 finalColor = mix(uColor * 0.8, uColor * 1.2, heightFactor);
     
     vec3 color = finalColor * lighting;

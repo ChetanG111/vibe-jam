@@ -4,8 +4,8 @@ import { CONFIG } from '../config';
 function hash(x: number, y: number): number {
     const pX = fract(x * 123.34 + y * 456.21);
     const pY = fract(x * 456.21 + y * 123.34);
-    const dot = pX * (pX + 45.32) + pY * (pY + 45.32);
-    return fract(pX * pY * dot);
+    const d = pX * (pX + 45.32) + pY * (pY + 45.32);
+    return fract((pX + d) * (pY + d));
 }
 
 function fract(x: number): number {
@@ -46,5 +46,6 @@ export function getFloorHeight(x: number, z: number): number {
   h += noise(x * 0.05, z * 0.05) * 4.0;
   h += noise(x * 0.1, z * 0.1) * 2.0;
   h += noise(x * 0.2, z * 0.2) * 1.0;
-  return CONFIG.floorDepth + h;
+  return h;
 }
+
