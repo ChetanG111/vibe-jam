@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { CONFIG } from '../config';
 
 // Matching JS implementation of the shader noise for perfect object placement
@@ -48,4 +49,51 @@ export function getFloorHeight(x: number, z: number): number {
   h += noise(x * 0.2, z * 0.2) * 1.0;
   return h;
 }
+
+/**
+ * Calculates the exact height on the faceted (triangulated) terrain mesh.
+ * Matches the GPU's linear interpolation across triangles.
+ */
+export function getFacetedFloorHeight(x: number, z: number): { y: number; normal: THREE.Vector3 } {
+  const size = CONFIG.chunkSize;
+  const segments = CONFIG.terrainSegments;
+  const res = size / segments;
+
+  // Vertex grid coordinates
+  const x0 = Math.floor(x / res) * res;
+  const x1 = x0 + res;
+  const z0 = Math.floor(z / res) * res;
+  const z1 = z0 + res;
+
+  // Heights at 4 corners
+  const h00 = getFloorHeight(x0, z0);
+  const h10 = getFloorHeight(x1, z0);
+  const h01 = getFloorHeight(x0, z1);
+  const h11 = getFloorHeight(x1, z1);
+
+  const fx = (x - x0) / res;
+  const fz = (z - z0) / res;
+
+  let y: number;
+  const normal = new THREE.Vector3();
+
+  // Match Three.js PlaneGeometry triangle split (fx + fz <= 1)
+  if (fx + fz <= 1) {
+    // Triangle 1: (0,0), (1,0), (0,1)
+    y = h00 + fx * (h10 - h00) + fz * (h01 - h00);
+    const v1 = new THREE.Vector3(res, h10 - h00, 0);
+    const v2 = new THREE.Vector3(0, h01 - h00, res);
+    normal.crossVectors(v2, v1).normalize();
+  } else {
+    // Triangle 2: (1,1), (0,1), (1,0)
+    y = h11 + (1 - fx) * (h01 - h11) + (1 - fz) * (h10 - h11);
+    const v1 = new THREE.Vector3(-res, h01 - h11, 0);
+    const v2 = new THREE.Vector3(0, h10 - h11, -res);
+    normal.crossVectors(v2, v1).normalize();
+  }
+
+  return { y: y + CONFIG.floorDepth, normal };
+}
+
+
 

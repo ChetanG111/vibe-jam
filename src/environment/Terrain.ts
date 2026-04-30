@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { getFloorHeight } from '../utils/math';
+import { getFloorHeight, getFacetedFloorHeight } from '../utils/math';
 import { FLOOR_VERTEX_SHADER, FLOOR_FRAGMENT_SHADER } from '../shaders/floorShader';
 
 export class Terrain {
@@ -47,16 +47,7 @@ export class Terrain {
   }
 
   public getFloorData(x: number, z: number): { y: number; normal: THREE.Vector3 } | null {
-    const h = getFloorHeight(x, z) + CONFIG.floorDepth;
-    const eps = 0.1;
-    const hX = getFloorHeight(x + eps, z) + CONFIG.floorDepth;
-    const hZ = getFloorHeight(x, z + eps) + CONFIG.floorDepth;
-    
-    const dx = new THREE.Vector3(eps, hX - h, 0);
-    const dz = new THREE.Vector3(0, hZ - h, eps);
-    const normal = new THREE.Vector3().crossVectors(dz, dx).normalize();
-    
-    return { y: h, normal };
+    return getFacetedFloorHeight(x, z);
   }
 
   public createRocks() {

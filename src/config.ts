@@ -30,7 +30,7 @@ export const CONFIG = {
   skyFogNear: 30,
   skyFogFar: 350,
   // Underwater Atmosphere
-  uwFogEnabled: true,
+  uwFogEnabled: false,
   uwFogColor: 0x004466,
   uwFogNear: 2,
   uwFogFar: 80,
