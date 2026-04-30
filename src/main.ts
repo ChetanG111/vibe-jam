@@ -28,6 +28,21 @@ class VibeScene {
   private submarineHeading = 0;   // Y-axis rotation in radians
   private lastElapsed = 0;        // for delta-time computation
 
+  // --- Live Configurable Parameters ---
+  private config = {
+    moveSpeed: 8,
+    turnSpeed: 1.8,
+    propMaxSpeed: 22,
+    waveSpeed: 1.0,
+    waveHeight: 1.0,
+    waterOpacity: 0.85,
+    subSink: 0.6,
+    foamIntensity: 2.0,
+    camDist: 12,
+    camHeight: 5,
+    camFOV: 50
+  };
+
   constructor() {
     // 1. Basic Setup
     this.scene = new THREE.Scene();
@@ -73,7 +88,7 @@ class VibeScene {
     // 4. Submarine (Code-based model)
     this.submarine = this.createCartoonSubmarine();
     this.scene.add(this.submarine);
-
+    
     // 5. UI Controls
     this.createFogPanel();
     this.createControlsHUD();
@@ -145,6 +160,7 @@ class VibeScene {
 
     // --- Custom ShaderMaterial with depth-based foam ---
     const waterMat = new THREE.ShaderMaterial({
+      transparent: true,
       uniforms: {
         uTime:       { value: 0 },
         uDepthTex:   { value: this.depthTarget.depthTexture },
@@ -154,6 +170,8 @@ class VibeScene {
         uWaterColor: { value: new THREE.Color(0x14b8e0) },
         uFoamColor:  { value: new THREE.Color(0xffffff) },
         uSunDir:     { value: new THREE.Vector3().copy(this.sun.position).normalize() },
+        uOpacity:    { value: this.config.waterOpacity },
+        uFoamStrength: { value: this.config.foamIntensity },
         fogColor:    { value: (this.scene.fog as THREE.Fog).color },
         fogNear:     { value: (this.scene.fog as THREE.Fog).near },
         fogFar:      { value: (this.scene.fog as THREE.Fog).far },
@@ -178,6 +196,8 @@ class VibeScene {
         uniform vec3 uWaterColor;
         uniform vec3 uFoamColor;
         uniform vec3 uSunDir;
+        uniform float uOpacity;
+        uniform float uFoamStrength;
         uniform vec3 fogColor;
         uniform float fogNear;
         uniform float fogFar;
@@ -218,17 +238,17 @@ class VibeScene {
 
           // Inner foam (very close, solid white edge)
           float innerFoam = 1.0 - smoothstep(0.0, 0.6, depthDiff);
-
-          float foam = max(innerFoam * 0.85, outerFoam * pattern * 0.7);
+ 
+          float foam = max(innerFoam * uFoamStrength, outerFoam * pattern * (uFoamStrength - 0.15));
           foam = clamp(foam, 0.0, 1.0);
-
+ 
           vec3 color = mix(baseColor, uFoamColor, foam);
-
+ 
           // --- Fog ---
           float fogFactor = smoothstep(fogNear, fogFar, vViewZ);
           color = mix(color, fogColor, fogFactor);
-
-          gl_FragColor = vec4(color, 1.0);
+ 
+          gl_FragColor = vec4(color, uOpacity);
         }
       `,
     });
@@ -329,9 +349,9 @@ class VibeScene {
   private getWaterHeight(worldX: number, worldZ: number): number {
     const t = this.clock.getElapsedTime();
     return (
-      Math.sin(worldX * 0.2 + t * 0.6) * 0.18 +
-      Math.sin(worldZ * 0.25 + t * 0.45) * 0.14 +
-      Math.sin((worldX + worldZ) * 0.15 + t * 0.5) * 0.1
+      Math.sin(worldX * 0.2 + t * 0.6 * this.config.waveSpeed) * 0.18 * this.config.waveHeight +
+      Math.sin(worldZ * 0.25 + t * 0.45 * this.config.waveSpeed) * 0.14 * this.config.waveHeight +
+      Math.sin((worldX + worldZ) * 0.15 + t * 0.5 * this.config.waveSpeed) * 0.1 * this.config.waveHeight
     );
   }
 
@@ -629,29 +649,112 @@ class VibeScene {
       fog.color.set(c);
       this.scene.background = c;
     });
+
+    // --- New Simulation Controls ---
+    const addSlider = (label: string, id: string, min: number, max: number, step: number, val: number, onChange: (v: number) => void) => {
+      const row = document.createElement('div');
+      row.className = 'fog-row';
+      row.style.flexWrap = 'wrap';
+      row.innerHTML = `
+        <label style="width: 100%; margin-bottom: 4px;">${label}</label>
+        <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+          <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" style="flex: 1;">
+          <input type="number" id="${id}-num" step="${step}" value="${val}" style="width: 50px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #40b0ff; border-radius: 4px; padding: 2px 4px; font-size: 11px;">
+        </div>
+      `;
+      panel.appendChild(row);
+      
+      const slider = document.getElementById(id) as HTMLInputElement;
+      const numInput = document.getElementById(`${id}-num`) as HTMLInputElement;
+      
+      const update = (v: number, origin: 'slider' | 'num') => {
+        if (origin === 'slider') numInput.value = v.toFixed(2).replace(/\.?0+$/, '');
+        else if (v >= min && v <= max) slider.value = v.toString();
+        onChange(v);
+      };
+
+      slider.addEventListener('input', () => update(parseFloat(slider.value), 'slider'));
+      numInput.addEventListener('input', () => update(parseFloat(numInput.value) || 0, 'num'));
+
+      // --- Drag-to-change logic for numeric boxes ---
+      numInput.style.cursor = 'ew-resize';
+      let isDragging = false;
+      let startX = 0;
+      let startVal = 0;
+
+      numInput.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startVal = parseFloat(numInput.value) || 0;
+        document.body.style.cursor = 'ew-resize';
+        e.preventDefault(); // Prevent text selection
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const sensitivity = step;
+        const newVal = startVal + dx * sensitivity;
+        numInput.value = newVal.toFixed(2).replace(/\.?0+$/, '');
+        update(newVal, 'num');
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          document.body.style.cursor = 'default';
+        }
+      });
+    };
+
+    const hr = document.createElement('hr');
+    hr.style.border = '0';
+    hr.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    hr.style.margin = '16px 0';
+    panel.appendChild(hr);
+
+    addSlider('Opacity', 'cfg-opacity', 0.1, 1, 0.01, this.config.waterOpacity, (v) => {
+      this.config.waterOpacity = v;
+      const mat = this.water.material as THREE.ShaderMaterial;
+      mat.uniforms.uOpacity.value = v;
+    });
+
+    addSlider('Sub Speed', 'cfg-speed', 1, 30, 0.5, this.config.moveSpeed, (v) => this.config.moveSpeed = v);
+    addSlider('Turn Spd', 'cfg-turn', 0.5, 4.0, 0.1, this.config.turnSpeed, (v) => this.config.turnSpeed = v);
+    addSlider('Prop Max', 'cfg-prop', 5, 50, 1, this.config.propMaxSpeed, (v) => this.config.propMaxSpeed = v);
+    addSlider('Wave Spd', 'cfg-w-spd', 0, 3, 0.1, this.config.waveSpeed, (v) => this.config.waveSpeed = v);
+    addSlider('Wave Hgt', 'cfg-w-hgt', 0, 5, 0.1, this.config.waveHeight, (v) => this.config.waveHeight = v);
+    addSlider('Sub Sink', 'cfg-sink', 0, 0.8, 0.05, this.config.subSink, (v) => this.config.subSink = v);
+    addSlider('Foam', 'cfg-foam', 0, 5, 0.05, this.config.foamIntensity, (v) => {
+      this.config.foamIntensity = v;
+      const mat = this.water.material as THREE.ShaderMaterial;
+      mat.uniforms.uFoamStrength.value = v;
+    });
+
+    addSlider('Cam Dist', 'cfg-cam-d', 2, 40, 0.5, this.config.camDist, (v) => this.config.camDist = v);
+    addSlider('Cam Hgt', 'cfg-cam-h', 0, 20, 0.2, this.config.camHeight, (v) => this.config.camHeight = v);
+    addSlider('Cam FOV', 'cfg-cam-f', 20, 120, 1, this.config.camFOV, (v) => {
+      this.config.camFOV = v;
+      this.camera.fov = v;
+      this.camera.updateProjectionMatrix();
+    });
   }
 
   /** Move & rotate the submarine based on currently held keys. */
   private processInput(dt: number) {
-    const MOVE_SPEED = 8;   // units per second
-    const TURN_SPEED = 1.8; // radians per second
-
-    if (this.keys.has('KeyA')) this.submarineHeading += TURN_SPEED * dt;
-    if (this.keys.has('KeyD')) this.submarineHeading -= TURN_SPEED * dt;
-
-    // Sub's local forward axis is +X.
-    // After a Y-rotation by heading angle h:
-    //   world forward = (cos h, 0, -sin h)
+    if (this.keys.has('KeyA')) this.submarineHeading += this.config.turnSpeed * dt;
+    if (this.keys.has('KeyD')) this.submarineHeading -= this.config.turnSpeed * dt;
+ 
     const fwdX = Math.cos(this.submarineHeading);
     const fwdZ = -Math.sin(this.submarineHeading);
-
+ 
     if (this.keys.has('KeyW')) {
-      this.submarine.position.x += fwdX * MOVE_SPEED * dt;
-      this.submarine.position.z += fwdZ * MOVE_SPEED * dt;
+      this.submarine.position.x += fwdX * this.config.moveSpeed * dt;
+      this.submarine.position.z += fwdZ * this.config.moveSpeed * dt;
     }
     if (this.keys.has('KeyS')) {
-      this.submarine.position.x -= fwdX * MOVE_SPEED * dt;
-      this.submarine.position.z -= fwdZ * MOVE_SPEED * dt;
+      this.submarine.position.x -= fwdX * this.config.moveSpeed * dt;
+      this.submarine.position.z -= fwdZ * this.config.moveSpeed * dt;
     }
   }
 
@@ -664,37 +767,45 @@ class VibeScene {
     // --- Input (WASD always active regardless of camera mode) ---
     this.processInput(dt);
 
-    // --- Submarine orientation ---
+    // --- Submarine placement & orientation ---
     this.submarine.rotation.y = this.submarineHeading;
     this.submarine.rotation.z = Math.sin(t * 0.8) * 0.04;
 
-    let targetPitch = Math.sin(t * 0.6) * 0.02;
+    // Multi-point sampling for better hull contact and wave-following pitch
+    const fwdX = Math.cos(this.submarineHeading);
+    const fwdZ = -Math.sin(this.submarineHeading);
+    const sampleDist = 1.4; // nose/tail offset
+
+    const noseY = this.getWaterHeight(this.submarine.position.x + fwdX * sampleDist, this.submarine.position.z + fwdZ * sampleDist);
+    const tailY = this.getWaterHeight(this.submarine.position.x - fwdX * sampleDist, this.submarine.position.z - fwdZ * sampleDist);
+    const midY  = this.getWaterHeight(this.submarine.position.x, this.submarine.position.z);
+    
+    const avgSurfaceY = (noseY + midY + tailY) / 3;
+    const wavePitch = Math.atan2(noseY - tailY, sampleDist * 2);
+
+    // Set position with custom sink depth
+    this.submarine.position.y = avgSurfaceY + this.config.subSink;
+
+    let targetPitch = Math.sin(t * 0.6) * 0.02 + wavePitch;
     if (this.keys.has('KeyW')) targetPitch -= 0.06;
     if (this.keys.has('KeyS')) targetPitch += 0.04;
     this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.12;
 
     // --- Water animation (vertex displacement) ---
-    const pos = this.water.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const x = this.waterVertices[i * 3];
-      const z = this.waterVertices[i * 3 + 1];
+    const waterPos = this.water.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < waterPos.count; i++) {
+      const vx = this.waterVertices[i * 3];
+      const vz = this.waterVertices[i * 3 + 1];
       const base = this.waterOrigY[i];
       const newZ =
         base +
-        Math.sin(x * 0.2 + t * 0.6) * 0.18 +
-        Math.sin(z * 0.25 + t * 0.45) * 0.14 +
-        Math.sin((x + z) * 0.15 + t * 0.5) * 0.1;
-      pos.setZ(i, newZ);
+        Math.sin(vx * 0.2 + t * 0.6 * this.config.waveSpeed) * 0.18 * this.config.waveHeight +
+        Math.sin(vz * 0.25 + t * 0.45 * this.config.waveSpeed) * 0.14 * this.config.waveHeight +
+        Math.sin((vx + vz) * 0.15 + t * 0.5 * this.config.waveSpeed) * 0.1 * this.config.waveHeight;
+      waterPos.setZ(i, newZ);
     }
-    pos.needsUpdate = true;
-
-    // --- Lock submarine to water surface ---
-    const surfaceY = this.getWaterHeight(
-      this.submarine.position.x,
-      this.submarine.position.z,
-    );
-    this.submarine.position.y = surfaceY + 0.69;
-
+    waterPos.needsUpdate = true;
+ 
     // --- Camera ---
     if (this.cameraMode === 'orbit') {
       this.controls.update();
@@ -702,9 +813,9 @@ class VibeScene {
       const fwdX = Math.cos(this.submarineHeading);
       const fwdZ = -Math.sin(this.submarineHeading);
 
-      const targetCamX = this.submarine.position.x - fwdX * 12;
-      const targetCamY = this.submarine.position.y + 5;
-      const targetCamZ = this.submarine.position.z - fwdZ * 12;
+      const targetCamX = this.submarine.position.x - fwdX * this.config.camDist;
+      const targetCamY = this.submarine.position.y + this.config.camHeight;
+      const targetCamZ = this.submarine.position.z - fwdZ * this.config.camDist;
 
       const lerp = this.snapCamera ? 1.0 : 0.06;
       this.snapCamera = false;
@@ -720,17 +831,19 @@ class VibeScene {
       );
     }
 
-    // --- Propeller spin logic with inertia ---
+    // --- Propeller spin logic with inertia & direction ---
     let targetSpeed = 0;
-    if (this.keys.has('KeyW') || this.keys.has('KeyS')) {
-      targetSpeed = 22; // Slightly faster peak
+    if (this.keys.has('KeyW')) {
+      targetSpeed = this.config.propMaxSpeed;
+    } else if (this.keys.has('KeyS')) {
+      targetSpeed = -this.config.propMaxSpeed; // Reverse!
     } else if (this.keys.has('KeyA') || this.keys.has('KeyD')) {
-      targetSpeed = 10;
+      targetSpeed = this.config.propMaxSpeed * 0.4;
     }
     
     // Smoothly ramp speed: faster acceleration, slower friction/coast
-    const lerp = targetSpeed > this.currentPropSpeed ? 0.05 : 0.015;
-    this.currentPropSpeed += (targetSpeed - this.currentPropSpeed) * lerp;
+    const lerpSpeed = Math.abs(targetSpeed) > Math.abs(this.currentPropSpeed) ? 0.05 : 0.015;
+    this.currentPropSpeed += (targetSpeed - this.currentPropSpeed) * lerpSpeed;
     this.propeller.rotation.x += this.currentPropSpeed * dt;
 
     // --- Depth pass: render scene into depth target ---
