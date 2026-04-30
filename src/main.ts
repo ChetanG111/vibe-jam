@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import gsap from 'gsap';
 
 class VibeScene {
   private scene: THREE.Scene;
@@ -12,6 +11,8 @@ class VibeScene {
   private depthTarget!: THREE.WebGLRenderTarget;
   private depthMaterial!: THREE.MeshDepthMaterial;
   private sun!: THREE.DirectionalLight;
+  private propeller!: THREE.Group;
+  private currentPropSpeed = 0;
   private waterVertices!: Float32Array;
   private waterOrigY!: Float32Array;
   private clock = new THREE.Clock();
@@ -239,20 +240,21 @@ class VibeScene {
 
   private createCartoonSubmarine() {
     const sub = new THREE.Group();
-    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3, flatShading: false });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 });
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x1a5fff, metalness: 0.9, roughness: 0.1 });
+    // Use flatShading: true to match the faceted low-poly look of the reference
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.4, flatShading: true });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5, flatShading: true });
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x1a5fff, metalness: 0.8, roughness: 0.2, flatShading: true });
 
-    // Main Body (Capsule)
-    const bodyGeo = new THREE.CapsuleGeometry(0.8, 1.8, 8, 24);
+    // Main Body: Lower segment count for distinct "poly-ness"
+    const bodyGeo = new THREE.CapsuleGeometry(0.8, 1.8, 4, 12);
     const body = new THREE.Mesh(bodyGeo, yellowMat);
     body.rotation.z = Math.PI / 2;
     body.castShadow = true;
     body.receiveShadow = true;
     sub.add(body);
 
-    // Turret (Cylinder)
-    const turretGeo = new THREE.CylinderGeometry(0.35, 0.4, 0.8, 16);
+    // Turret
+    const turretGeo = new THREE.CylinderGeometry(0.35, 0.4, 0.8, 8);
     const turret = new THREE.Mesh(turretGeo, yellowMat);
     turret.position.y = 0.8;
     turret.position.x = 0.2;
@@ -260,7 +262,7 @@ class VibeScene {
     sub.add(turret);
 
     // Periscope
-    const pScopeGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8);
+    const pScopeGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6);
     const pScope = new THREE.Mesh(pScopeGeo, darkMat);
     pScope.position.set(0.2, 1.4, 0);
     sub.add(pScope);
@@ -270,16 +272,28 @@ class VibeScene {
     pScopeLens.position.set(0.25, 1.7, 0);
     sub.add(pScopeLens);
 
-    // Portholes (3 circles)
+    // Faceted Portholes with dark borders
     for (let i = 0; i < 3; i++) {
-      const portGeo = new THREE.CircleGeometry(0.2, 16);
-      const port = new THREE.Mesh(portGeo, blueMat);
-      port.position.set(-0.6 + i * 0.7, 0, 0.81);
-      sub.add(port);
+      const portGroup = new THREE.Group();
+      portGroup.position.set(-0.6 + i * 0.7, 0, 0.78);
+      
+      // Border/Frame
+      const frameGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.05, 8);
+      const frame = new THREE.Mesh(frameGeo, darkMat);
+      frame.rotation.x = Math.PI / 2;
+      portGroup.add(frame);
+
+      // Glass (faceted cylinder)
+      const glassGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.06, 8);
+      const glass = new THREE.Mesh(glassGeo, blueMat);
+      glass.rotation.x = Math.PI / 2;
+      portGroup.add(glass);
+
+      sub.add(portGroup);
     }
 
     // Propeller base
-    const propBaseGeo = new THREE.CylinderGeometry(0.15, 0.3, 0.4, 8);
+    const propBaseGeo = new THREE.CylinderGeometry(0.15, 0.3, 0.4, 6);
     const propBase = new THREE.Mesh(propBaseGeo, yellowMat);
     propBase.position.x = -1.8;
     propBase.rotation.z = Math.PI / 2;
@@ -291,10 +305,10 @@ class VibeScene {
     const blade2 = new THREE.Mesh(bladeGeo, darkMat);
     blade2.rotation.x = Math.PI / 2;
 
-    const prop = new THREE.Group();
-    prop.add(blade1, blade2);
-    prop.position.x = -2;
-    sub.add(prop);
+    this.propeller = new THREE.Group();
+    this.propeller.add(blade1, blade2);
+    this.propeller.position.x = -2;
+    sub.add(this.propeller);
 
     // Tail Fins
     const finGeo = new THREE.BoxGeometry(0.4, 0.05, 1.2);
@@ -302,10 +316,6 @@ class VibeScene {
     fin.position.x = -1.5;
     sub.add(fin);
 
-    // Propeller spin — only child animation we keep via GSAP
-    gsap.to(prop.rotation, { x: Math.PI * 2, duration: 1, repeat: -1, ease: 'none' });
-
-    // All other sub rotation/position is driven manually in animate()
     sub.position.y = 0.7;
     return sub;
   }
@@ -709,6 +719,19 @@ class VibeScene {
         this.submarine.position.z + fwdZ * 3,
       );
     }
+
+    // --- Propeller spin logic with inertia ---
+    let targetSpeed = 0;
+    if (this.keys.has('KeyW') || this.keys.has('KeyS')) {
+      targetSpeed = 22; // Slightly faster peak
+    } else if (this.keys.has('KeyA') || this.keys.has('KeyD')) {
+      targetSpeed = 10;
+    }
+    
+    // Smoothly ramp speed: faster acceleration, slower friction/coast
+    const lerp = targetSpeed > this.currentPropSpeed ? 0.05 : 0.015;
+    this.currentPropSpeed += (targetSpeed - this.currentPropSpeed) * lerp;
+    this.propeller.rotation.x += this.currentPropSpeed * dt;
 
     // --- Depth pass: render scene into depth target ---
     const waterMat = this.water.material as THREE.ShaderMaterial;
