@@ -12,6 +12,7 @@ class VibeScene {
   private depthMaterial!: THREE.MeshDepthMaterial;
   private sun!: THREE.DirectionalLight;
   private propeller!: THREE.Group;
+  private sunRays: THREE.Group = new THREE.Group();
   private currentPropSpeed = 0;
   private waterVertices!: Float32Array;
   private waterOrigY!: Float32Array;
@@ -50,7 +51,8 @@ class VibeScene {
     wakeSpread: 0.6,
     wakeBuoyancy: -0.1,
     wakeOpacity: 0.6,
-    wakeOffset: 0.45
+    wakeOffset: 0.45,
+    floorDepth: -32, // Lowered slightly for deeper feel
   };
 
   // --- Particles state ---
@@ -63,16 +65,18 @@ class VibeScene {
     maxLife: number;
     scale: number;
   }> = [];
+  private floorMesh!: THREE.Mesh;
   private nextWakeIndex = 0;
   private spawnAccumulator = 0;
+  private raycaster = new THREE.Raycaster();
 
   constructor() {
     // 1. Basic Setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.skyColor);
 
-    // Horizon fog matches sky
-    this.scene.fog = new THREE.Fog(this.skyColor, 20, 100);
+    // Horizon fog matches sky - increased distance for larger world
+    this.scene.fog = new THREE.Fog(this.skyColor, 30, 350);
 
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(20, 10, 25);
@@ -89,7 +93,6 @@ class VibeScene {
     // OrbitControls (disabled by default — only active in orbit mode)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.maxPolarAngle = Math.PI / 2.05;
     this.controls.enabled = false;
 
     // WASD key tracking — only preventDefault for movement keys
@@ -105,6 +108,8 @@ class VibeScene {
     // 3. Environment
     this.createWater();
     this.createIslands();
+    this.createOceanFloor();
+    this.createCorals();
     this.createRocks();
     this.createClouds();
 
@@ -112,7 +117,11 @@ class VibeScene {
     this.submarine = this.createCartoonSubmarine();
     this.scene.add(this.submarine);
     
-    // 5. Wake Particles
+    // 5. Sun Rays
+    this.createSunRays();
+    this.scene.add(this.sunRays);
+    
+    // 6. Wake Particles
     this.createWakeParticles();
     
     // 6. UI Controls
@@ -202,6 +211,7 @@ class VibeScene {
         fogNear:     { value: (this.scene.fog as THREE.Fog).near },
         fogFar:      { value: (this.scene.fog as THREE.Fog).far },
       },
+      side: THREE.DoubleSide,
       vertexShader: /* glsl */ `
         varying vec3 vWorldPos;
         varying float vViewZ;
@@ -383,11 +393,51 @@ class VibeScene {
     );
   }
 
+  /** Returns the floor height at world (x, z) */
+  private getFloorHeight(x: number, z: number): number {
+    const noise = 
+      Math.sin(x * 0.05) * 2.5 + 
+      Math.sin(z * 0.04) * 2.2 + 
+      Math.sin((x + z) * 0.25) * 0.8; // High frequency "crunch"
+    return this.config.floorDepth + noise;
+  }
+
+  /**
+   * Samples the actual floor mesh using raycasting.
+   * This is much more accurate than the mathematical height function
+   * because it accounts for the flat triangle surfaces of the low-poly mesh.
+   */
+  private getFloorData(x: number, z: number): { y: number; normal: THREE.Vector3 } | null {
+    if (!this.floorMesh) return null;
+    
+    // Raycast from well above the floor down towards it
+    this.raycaster.set(
+      new THREE.Vector3(x, 20, z), 
+      new THREE.Vector3(0, -1, 0)
+    );
+    
+    // Ensure the matrix is up to date for accurate intersection
+    this.floorMesh.updateMatrixWorld();
+    const intersects = this.raycaster.intersectObject(this.floorMesh);
+    
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      // Get the face normal and transform it to world space
+      const normal = hit.face!.normal.clone();
+      normal.applyQuaternion(this.floorMesh.quaternion);
+      
+      return { y: hit.point.y, normal };
+    }
+    
+    return null;
+  }
+
   private createIslands() {
-    this.addIsland(-18, -0.2, -12, 7, 0x996633);
-    this.addIsland(15, -0.2, -8, 5, 0x996633);
-    this.addIsland(-45, -0.5, -40, 10, 0x777777);
-    this.addIsland(40, -0.5, -35, 4, 0x777777);
+    // Making islands significantly larger (3x-5x) and spreading them out
+    this.addIsland(-40, -0.5, -30, 22, 0x996633); // Main tropical island
+    this.addIsland(50, -0.5, -20, 18, 0x996633);  // Smaller tropical island
+    this.addIsland(-80, -1.0, -90, 35, 0x777777); // Huge rocky island
+    this.addIsland(90, -1.0, -70, 25, 0x777777);  // Distant rock massif
   }
 
   /** Scattered small to medium rocks in the water */
@@ -418,8 +468,16 @@ class VibeScene {
     const rockColors = [0x888888, 0x999999, 0x777777, 0xaaaaaa, 0x666666];
 
     for (const def of rockDefs) {
+      const surface = this.getFloorData(def.x, def.z);
+      if (!surface) continue;
+
       const group = new THREE.Group();
-      group.position.set(def.x, -0.3, def.z);
+      // Position rocks accurately on the mesh surface
+      group.position.set(def.x, surface.y - 0.05, def.z); // Minimal sink for contact
+      
+      // Align to the actual face normal of the mesh
+      group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
+      group.rotateY(Math.random() * Math.PI * 2); // Random spin around local UP
 
       const color = rockColors[Math.floor(Math.random() * rockColors.length)];
       const rockMat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true });
@@ -427,7 +485,12 @@ class VibeScene {
       // Main rock mass
       const mainGeo = new THREE.IcosahedronGeometry(def.scale, 1);
       const main = new THREE.Mesh(mainGeo, rockMat);
-      main.scale.y = 0.55 + Math.random() * 0.2;
+      
+      // Pivot correction: raise the mesh so its bottom is roughly at the group's pivot
+      const yScale = 0.55 + Math.random() * 0.2;
+      main.scale.set(1, yScale, 1);
+      main.position.y = def.scale * yScale * 0.7; // Pull up to stay above ground
+      
       main.rotation.y = Math.random() * Math.PI;
       main.castShadow = true;
       main.receiveShadow = true;
@@ -435,16 +498,16 @@ class VibeScene {
 
       // Small companion rock ~50% of the time
       if (Math.random() > 0.5) {
-        const smallGeo = new THREE.IcosahedronGeometry(def.scale * 0.45, 1);
+        const smallScale = def.scale * 0.45;
+        const smallGeo = new THREE.IcosahedronGeometry(smallScale, 1);
         const small = new THREE.Mesh(smallGeo, rockMat);
         const angle = Math.random() * Math.PI * 2;
-        small.position.set(Math.cos(angle) * def.scale * 0.9, -0.1, Math.sin(angle) * def.scale * 0.5);
+        
+        small.position.set(Math.cos(angle) * def.scale * 0.9, smallScale * 0.4, Math.sin(angle) * def.scale * 0.5);
         small.scale.y = 0.5;
         small.castShadow = true;
         group.add(small);
       }
-
-      // (foam is now generated by the water's depth-based shader)
 
       this.scene.add(group);
     }
@@ -462,24 +525,44 @@ class VibeScene {
     rock.receiveShadow = true;
     islandGroup.add(rock);
 
+    // Underwater base extending well below the ocean floor to handle undulations
+    const floorY = this.config.floorDepth;
+    const islandTopY = y;
+    const baseHeight = Math.abs(islandTopY - (floorY - 15)); // Extra depth
+    
+    // Tapered cylinder for a more natural volcanic/island base look
+    const baseGeo = new THREE.CylinderGeometry(scale * 0.8, scale * 1.5, baseHeight, 10);
+    const base = new THREE.Mesh(baseGeo, rockMat);
+    // Position base so its top meets the island rock and it goes deep enough
+    base.position.y = -baseHeight / 2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    islandGroup.add(base);
+
     if (color !== 0x777777) {
-      const grassGeo = new THREE.IcosahedronGeometry(scale * 0.9, 1);
+      const grassGeo = new THREE.IcosahedronGeometry(scale * 0.95, 1);
       const grassMat = new THREE.MeshStandardMaterial({ color: 0x55aa00, roughness: 1, flatShading: true });
       const grass = new THREE.Mesh(grassGeo, grassMat);
-      grass.position.y = scale * 0.25;
-      grass.scale.y = 0.3;
+      grass.position.y = scale * 0.4;
+      grass.scale.y = 0.25;
       grass.castShadow = true;
       grass.receiveShadow = true;
       islandGroup.add(grass);
 
-      const treeCount = 2 + Math.floor(Math.random() * 2);
+      // Tree count scales with island size
+      const treeCount = Math.floor(scale * 0.8);
       for (let i = 0; i < treeCount; i++) {
         const tree = this.createPalmTree();
         const angle = Math.random() * Math.PI * 2;
-        const dist = Math.random() * (scale * 0.6);
-        tree.position.set(Math.cos(angle) * dist, scale * 0.3, Math.sin(angle) * dist);
+        const dist = Math.random() * (scale * 0.75);
+        
+        // Calculate height on the ellipsoid surface for better placement
+        const normDist = dist / scale;
+        const surfaceHeight = Math.sqrt(Math.max(0, 1 - normDist * normDist)) * scale * 0.6;
+        
+        tree.position.set(Math.cos(angle) * dist, surfaceHeight, Math.sin(angle) * dist);
         tree.rotation.y = Math.random() * Math.PI;
-        tree.scale.setScalar(0.7 + Math.random() * 0.3);
+        tree.scale.setScalar(0.8 + Math.random() * 0.5);
         islandGroup.add(tree);
       }
 
@@ -512,6 +595,101 @@ class VibeScene {
       tree.add(leaf);
     }
     return tree;
+  }
+
+  private createOceanFloor() {
+    const segments = 120; // Increased resolution to better match artifact positioning
+    const size = 600; // Large floor
+    const floorGeo = new THREE.PlaneGeometry(size, size, segments, segments);
+    
+    // Displace vertices for low-poly terrain look
+    const pos = floorGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getY(i); // Plane Y is world Z after rotation
+      pos.setZ(i, this.getFloorHeight(x, z) - this.config.floorDepth);
+    }
+    floorGeo.computeVertexNormals();
+
+    const floorMat = new THREE.MeshStandardMaterial({ 
+      color: 0xc2b280, // Sandy color
+      roughness: 0.9,
+      flatShading: true 
+    });
+
+    this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
+    this.floorMesh.rotation.x = -Math.PI / 2;
+    this.floorMesh.position.y = this.config.floorDepth;
+    this.floorMesh.receiveShadow = true;
+    this.scene.add(this.floorMesh);
+  }
+
+  private createCorals() {
+    const coralColors = [0xff5e00, 0xff007f, 0x7f00ff, 0x00ff7f, 0xffd700, 0x40b0ff];
+    const coralCount = 75;
+
+    for (let i = 0; i < coralCount; i++) {
+      const color = coralColors[Math.floor(Math.random() * coralColors.length)];
+      const coralMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true });
+      const group = new THREE.Group();
+      
+      const x = (Math.random() - 0.5) * 350; // Increased spread for better density
+      const z = (Math.random() - 0.5) * 350;
+      
+      const surface = this.getFloorData(x, z);
+      if (!surface) continue;
+
+      group.position.set(x, surface.y - 0.05, z); // Minimal sink for contact
+
+      // Align to actual mesh surface normal
+      group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
+      group.rotateY(Math.random() * Math.PI * 2);
+
+      // Choose a coral species
+      const species = Math.random();
+      
+      if (species < 0.4) {
+        // --- TYPE A: TUBE CORAL ---
+        const tubeCount = 2 + Math.floor(Math.random() * 3);
+        for (let j = 0; j < tubeCount; j++) {
+          const h = 0.5 + Math.random() * 1.5;
+          const r = 0.15 + Math.random() * 0.15;
+          const tubeGeo = new THREE.CylinderGeometry(r * 1.1, r, h, 6);
+          const tube = new THREE.Mesh(tubeGeo, coralMat);
+          tube.position.set((Math.random() - 0.5) * 0.6, h / 2, (Math.random() - 0.5) * 0.6);
+          tube.rotation.x = (Math.random() - 0.5) * 0.3;
+          tube.rotation.z = (Math.random() - 0.5) * 0.3;
+          tube.castShadow = true;
+          group.add(tube);
+        }
+      } else if (species < 0.8) {
+        // --- TYPE B: BRANCHING CORAL ---
+        const branchCount = 4 + Math.floor(Math.random() * 5);
+        for (let j = 0; j < branchCount; j++) {
+          const h = 0.8 + Math.random() * 1.2;
+          const w = 0.1 + Math.random() * 0.1;
+          const branchGeo = new THREE.CylinderGeometry(w * 0.4, w, h, 5);
+          const branch = new THREE.Mesh(branchGeo, coralMat);
+          branch.position.set((Math.random() - 0.5) * 0.3, h / 2, (Math.random() - 0.5) * 0.3);
+          branch.rotation.x = (Math.random() - 0.5) * 1.5;
+          branch.rotation.z = (Math.random() - 0.5) * 1.5;
+          branch.castShadow = true;
+          group.add(branch);
+        }
+      } else {
+        // --- TYPE C: BRAIN/ROCK CORAL ---
+        const size = 0.4 + Math.random() * 0.6;
+        const brainGeo = new THREE.IcosahedronGeometry(size, 1);
+        const brain = new THREE.Mesh(brainGeo, coralMat);
+        brain.position.y = size * 0.5;
+        brain.scale.set(1.2, 0.7, 1.1);
+        brain.castShadow = true;
+        group.add(brain);
+      }
+      
+      group.scale.setScalar(0.7 + Math.random() * 0.8);
+      this.scene.add(group);
+    }
   }
 
   private createWakeParticles() {
@@ -629,6 +807,39 @@ class VibeScene {
     }
   }
 
+  private createSunRays() {
+    const rayCount = 35; // More rays for better atmosphere
+    const rayMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.08,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    for (let i = 0; i < rayCount; i++) {
+      const h = 60 + Math.random() * 30; // Much taller rays to reach the deep floor
+      const r = 1.5 + Math.random() * 4;
+      // Use cones instead of cylinders to avoid visible top caps
+      const rayGeo = new THREE.ConeGeometry(r, h, 8, 1, true);
+      const ray = new THREE.Mesh(rayGeo, rayMat);
+      
+      // Position top at surface and reach far below
+      ray.position.set(
+        (Math.random() - 0.5) * 120,
+        -h / 2, 
+        (Math.random() - 0.5) * 120
+      );
+      
+      // Slight random tilt
+      ray.rotation.x = (Math.random() - 0.5) * 0.4;
+      ray.rotation.z = (Math.random() - 0.5) * 0.4;
+      
+      this.sunRays.add(ray);
+    }
+  }
+
   private createClouds() {
     const cloudMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -710,6 +921,17 @@ class VibeScene {
           box-shadow: 0 8px 32px rgba(0,0,0,0.4);
           user-select: none;
           z-index: 9999;
+          max-height: calc(100vh - 48px);
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(64, 176, 255, 0.5) transparent;
+        }
+        #fog-panel::-webkit-scrollbar {
+          width: 6px;
+        }
+        #fog-panel::-webkit-scrollbar-thumb {
+          background: rgba(64, 176, 255, 0.3);
+          border-radius: 10px;
         }
         #fog-panel h3 {
           margin: 0 0 14px;
@@ -1076,6 +1298,26 @@ class VibeScene {
       cloud.position.x += 0.008 * (1 + (index % 3) * 0.4);
       if (cloud.position.x > 110) cloud.position.x = -110;
     });
+
+    // --- Animate Sun Rays ---
+    this.sunRays.children.forEach((ray, i) => {
+      ray.rotation.y += dt * 0.1;
+      const pulse = Math.sin(t * 0.5 + i) * 0.02;
+      (ray.material as THREE.MeshBasicMaterial).opacity = 0.06 + pulse;
+    });
+
+    // --- Dynamic Underwater Atmosphere ---
+    const isUnderwater = this.camera.position.y < 0;
+    const fogState = this.scene.fog as THREE.Fog;
+    const targetFogColor = isUnderwater ? new THREE.Color(0x004466) : new THREE.Color(this.skyColor);
+    const targetFogNear = isUnderwater ? 2 : 30;
+    const targetFogFar = isUnderwater ? 80 : 350;
+
+    fogState.color.lerp(targetFogColor, 0.05);
+    fogState.near += (targetFogNear - fogState.near) * 0.05;
+    fogState.far += (targetFogFar - fogState.far) * 0.05;
+    if (!isUnderwater) this.scene.background = fogState.color;
+    else this.scene.background = new THREE.Color(0x002233); // Darker deep water background
 
     // --- Final render (water shader samples depth texture) ---
     this.renderer.render(this.scene, this.camera);
