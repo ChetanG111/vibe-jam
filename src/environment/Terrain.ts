@@ -75,7 +75,8 @@ export class Terrain {
       if (!surface) continue;
 
       const group = new THREE.Group();
-      group.position.set(x, surface.y - 0.1, z);
+      const sink = 0.25 - ((scale - 0.6) / 1.6) * 0.15;
+      group.position.set(x, surface.y - sink, z);
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
       group.rotateY(Math.random() * Math.PI * 2);
 
@@ -125,7 +126,9 @@ export class Terrain {
       const surface = this.getFloorData(x, z);
       if (!surface) continue;
 
-      group.position.set(x, surface.y - 0.1, z);
+      const totalScale = 0.7 + Math.random() * 0.8;
+      const sink = 0.2 - ((totalScale - 0.7) / 0.8) * 0.1;
+      group.position.set(x, surface.y - sink, z);
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
       group.rotateY(Math.random() * Math.PI * 2);
 
@@ -165,7 +168,7 @@ export class Terrain {
         brain.castShadow = true;
         group.add(brain);
       }
-      group.scale.setScalar(0.7 + Math.random() * 0.8);
+      group.scale.setScalar(totalScale);
       this.coralGroup.add(group);
     }
   }
