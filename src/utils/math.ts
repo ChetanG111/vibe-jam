@@ -1,5 +1,38 @@
 import { CONFIG } from '../config';
 
+// Matching JS implementation of the shader noise for perfect object placement
+function hash(x: number, y: number): number {
+    const pX = fract(x * 123.34 + y * 456.21);
+    const pY = fract(x * 456.21 + y * 123.34);
+    const dot = pX * (pX + 45.32) + pY * (pY + 45.32);
+    return fract(pX * pY * dot);
+}
+
+function fract(x: number): number {
+    return x - Math.floor(x);
+}
+
+function mix(a: number, b: number, t: number): number {
+    return a * (1 - t) + b * t;
+}
+
+function noise(x: number, z: number): number {
+    const iX = Math.floor(x);
+    const iZ = Math.floor(z);
+    const fX = x - iX;
+    const fZ = z - iZ;
+
+    const a = hash(iX, iZ);
+    const b = hash(iX + 1, iZ);
+    const c = hash(iX, iZ + 1);
+    const d = hash(iX + 1, iZ + 1);
+
+    const uX = fX * fX * (3.0 - 2.0 * fX);
+    const uZ = fZ * fZ * (3.0 - 2.0 * fZ);
+
+    return mix(a, b, uX) + (c - a) * uZ * (1.0 - uX) + (d - b) * uX * uZ;
+}
+
 export function getWaterHeight(worldX: number, worldZ: number, time: number): number {
   return (
     Math.sin(worldX * 0.2 + time * 0.6 * CONFIG.waveSpeed) * 0.18 * CONFIG.waveHeight +
@@ -9,9 +42,9 @@ export function getWaterHeight(worldX: number, worldZ: number, time: number): nu
 }
 
 export function getFloorHeight(x: number, z: number): number {
-  const noise = 
-    Math.sin(x * 0.05) * 2.5 + 
-    Math.sin(z * 0.04) * 2.2 + 
-    Math.sin((x + z) * 0.25) * 0.8;
-  return CONFIG.floorDepth + noise;
+  let h = 0;
+  h += noise(x * 0.05, z * 0.05) * 4.0;
+  h += noise(x * 0.1, z * 0.1) * 2.0;
+  h += noise(x * 0.2, z * 0.2) * 1.0;
+  return CONFIG.floorDepth + h;
 }
