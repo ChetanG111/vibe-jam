@@ -53,6 +53,18 @@ class VibeScene {
     wakeOpacity: 0.6,
     wakeOffset: 0.45,
     floorDepth: -32, // Lowered slightly for deeper feel
+    rockCount: 20,
+    coralCount: 75,
+    // Sky Atmosphere
+    skyFogEnabled: true,
+    skyFogNear: 30,
+    skyFogFar: 350,
+    // Underwater Atmosphere
+    uwFogEnabled: true,
+    uwFogColor: 0x004466,
+    uwFogNear: 2,
+    uwFogFar: 80,
+    uwBgColor: 0x002233,
   };
 
   // --- Particles state ---
@@ -66,6 +78,8 @@ class VibeScene {
     scale: number;
   }> = [];
   private floorMesh!: THREE.Mesh;
+  private rockGroup: THREE.Group = new THREE.Group();
+  private coralGroup: THREE.Group = new THREE.Group();
   private nextWakeIndex = 0;
   private spawnAccumulator = 0;
   private raycaster = new THREE.Raycaster();
@@ -109,6 +123,10 @@ class VibeScene {
     this.createWater();
     this.createIslands();
     this.createOceanFloor();
+    
+    this.scene.add(this.coralGroup);
+    this.scene.add(this.rockGroup);
+    
     this.createCorals();
     this.createRocks();
     this.createClouds();
@@ -442,38 +460,25 @@ class VibeScene {
 
   /** Scattered small to medium rocks in the water */
   private createRocks() {
-    const rockDefs: Array<{ x: number; z: number; scale: number }> = [
-      // Close foreground rocks
-      { x: -8,  z: 5,   scale: 1.0 },
-      { x: 12,  z: 8,   scale: 0.7 },
-      { x: 6,   z: -5,  scale: 0.9 },
-      { x: -4,  z: -8,  scale: 1.2 },
-      { x: 22,  z: 2,   scale: 0.8 },
-      { x: -15, z: 3,   scale: 0.6 },
-      // Mid-range rocks
-      { x: 8,   z: -18, scale: 1.5 },
-      { x: -22, z: -5,  scale: 1.1 },
-      { x: 30,  z: -10, scale: 1.3 },
-      { x: -30, z: 5,   scale: 0.9 },
-      { x: 18,  z: 12,  scale: 0.7 },
-      { x: -10, z: 15,  scale: 1.0 },
-      // Distant background rocks
-      { x: 5,   z: -30, scale: 2.0 },
-      { x: -35, z: -20, scale: 1.8 },
-      { x: 45,  z: -15, scale: 1.5 },
-      { x: -50, z: 10,  scale: 2.2 },
-      { x: 35,  z: 20,  scale: 1.2 },
-    ];
+    // Clear existing rocks
+    while(this.rockGroup.children.length > 0) {
+      const obj = this.rockGroup.children[0];
+      this.rockGroup.remove(obj);
+    }
 
     const rockColors = [0x888888, 0x999999, 0x777777, 0xaaaaaa, 0x666666];
 
-    for (const def of rockDefs) {
-      const surface = this.getFloorData(def.x, def.z);
+    for (let i = 0; i < this.config.rockCount; i++) {
+      const x = (Math.random() - 0.5) * 350;
+      const z = (Math.random() - 0.5) * 350;
+      const scale = 0.6 + Math.random() * 1.6;
+
+      const surface = this.getFloorData(x, z);
       if (!surface) continue;
 
       const group = new THREE.Group();
       // Position rocks accurately on the mesh surface
-      group.position.set(def.x, surface.y - 0.05, def.z); // Minimal sink for contact
+      group.position.set(x, surface.y - 0.05, z); // Minimal sink for contact
       
       // Align to the actual face normal of the mesh
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
@@ -483,13 +488,13 @@ class VibeScene {
       const rockMat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true });
 
       // Main rock mass
-      const mainGeo = new THREE.IcosahedronGeometry(def.scale, 1);
+      const mainGeo = new THREE.IcosahedronGeometry(scale, 1);
       const main = new THREE.Mesh(mainGeo, rockMat);
       
       // Pivot correction: raise the mesh so its bottom is roughly at the group's pivot
       const yScale = 0.55 + Math.random() * 0.2;
       main.scale.set(1, yScale, 1);
-      main.position.y = def.scale * yScale * 0.7; // Pull up to stay above ground
+      main.position.y = scale * yScale * 0.7; // Pull up to stay above ground
       
       main.rotation.y = Math.random() * Math.PI;
       main.castShadow = true;
@@ -498,18 +503,18 @@ class VibeScene {
 
       // Small companion rock ~50% of the time
       if (Math.random() > 0.5) {
-        const smallScale = def.scale * 0.45;
+        const smallScale = scale * 0.45;
         const smallGeo = new THREE.IcosahedronGeometry(smallScale, 1);
         const small = new THREE.Mesh(smallGeo, rockMat);
         const angle = Math.random() * Math.PI * 2;
         
-        small.position.set(Math.cos(angle) * def.scale * 0.9, smallScale * 0.4, Math.sin(angle) * def.scale * 0.5);
+        small.position.set(Math.cos(angle) * scale * 0.9, smallScale * 0.4, Math.sin(angle) * scale * 0.5);
         small.scale.y = 0.5;
         small.castShadow = true;
         group.add(small);
       }
 
-      this.scene.add(group);
+      this.rockGroup.add(group);
     }
   }
 
@@ -625,10 +630,15 @@ class VibeScene {
   }
 
   private createCorals() {
-    const coralColors = [0xff5e00, 0xff007f, 0x7f00ff, 0x00ff7f, 0xffd700, 0x40b0ff];
-    const coralCount = 75;
+    // Clear existing corals
+    while(this.coralGroup.children.length > 0) {
+      const obj = this.coralGroup.children[0];
+      this.coralGroup.remove(obj);
+    }
 
-    for (let i = 0; i < coralCount; i++) {
+    const coralColors = [0xff5e00, 0xff007f, 0x7f00ff, 0x00ff7f, 0xffd700, 0x40b0ff];
+
+    for (let i = 0; i < this.config.coralCount; i++) {
       const color = coralColors[Math.floor(Math.random() * coralColors.length)];
       const coralMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true });
       const group = new THREE.Group();
@@ -688,7 +698,7 @@ class VibeScene {
       }
       
       group.scale.setScalar(0.7 + Math.random() * 0.8);
-      this.scene.add(group);
+      this.coralGroup.add(group);
     }
   }
 
@@ -972,30 +982,38 @@ class VibeScene {
           border-radius: 6px;
         }
       </style>
-      <h3>🌫 Fog</h3>
+      <h3>🌍 Sky Atmosphere</h3>
+      <div class="fog-row">
+        <label>Enabled</label>
+        <input type="checkbox" id="cfg-sky-fog-toggle" ${this.config.skyFogEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer; accent-color: #40b0ff;">
+      </div>
       <div class="fog-row">
         <label>Near</label>
-        <input type="range" id="fog-near" min="0" max="100" step="1" value="${fog.near}">
-        <span class="val" id="fog-near-val">${fog.near}</span>
+        <input type="range" id="fog-near" min="0" max="100" step="1" value="${this.config.skyFogNear}">
+        <span class="val" id="fog-near-val">${this.config.skyFogNear}</span>
       </div>
       <div class="fog-row">
         <label>Far</label>
-        <input type="range" id="fog-far" min="10" max="400" step="5" value="${fog.far}">
-        <span class="val" id="fog-far-val">${fog.far}</span>
+        <input type="range" id="fog-far" min="10" max="600" step="5" value="${this.config.skyFogFar}">
+        <span class="val" id="fog-far-val">${this.config.skyFogFar}</span>
       </div>
       <div class="fog-row">
         <label>Color</label>
-        <input type="color" id="fog-color" value="#40b0ff">
+        <input type="color" id="fog-color" value="#${this.skyColor.toString(16).padStart(6, '0')}">
         <span class="val">sky</span>
       </div>
     `;
     document.body.appendChild(panel);
+    
+    // Sky Fog Toggle
+    const skyFogToggle = document.getElementById('cfg-sky-fog-toggle') as HTMLInputElement;
+    skyFogToggle.addEventListener('change', () => this.config.skyFogEnabled = skyFogToggle.checked);
 
     // Near slider
     const nearSlider = document.getElementById('fog-near') as HTMLInputElement;
     const nearVal = document.getElementById('fog-near-val')!;
     nearSlider.addEventListener('input', () => {
-      fog.near = parseFloat(nearSlider.value);
+      this.config.skyFogNear = parseFloat(nearSlider.value);
       nearVal.textContent = nearSlider.value;
     });
 
@@ -1003,7 +1021,7 @@ class VibeScene {
     const farSlider = document.getElementById('fog-far') as HTMLInputElement;
     const farVal = document.getElementById('fog-far-val')!;
     farSlider.addEventListener('input', () => {
-      fog.far = parseFloat(farSlider.value);
+      this.config.skyFogFar = parseFloat(farSlider.value);
       farVal.textContent = farSlider.value;
     });
 
@@ -1011,8 +1029,7 @@ class VibeScene {
     const colorPicker = document.getElementById('fog-color') as HTMLInputElement;
     colorPicker.addEventListener('input', () => {
       const c = new THREE.Color(colorPicker.value);
-      fog.color.set(c);
-      this.scene.background = c;
+      this.skyColor = c.getHex();
     });
 
     // --- New Simulation Controls ---
@@ -1133,6 +1150,62 @@ class VibeScene {
     addSlider('Wake Opac', 'cfg-wake-opac', 0, 1, 0.05, this.config.wakeOpacity, (v) => {
       this.config.wakeOpacity = v;
       (this.wakeMesh.material as THREE.MeshStandardMaterial).opacity = v;
+    });
+
+    const hr3 = document.createElement('hr');
+    hr3.style.border = '0';
+    hr3.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    hr3.style.margin = '16px 0';
+    panel.appendChild(hr3);
+
+    addSlider('Rocks', 'cfg-rocks', 0, 100, 1, this.config.rockCount, (v) => {
+      this.config.rockCount = Math.floor(v);
+      this.createRocks();
+    });
+
+    addSlider('Corals', 'cfg-corals', 0, 200, 1, this.config.coralCount, (v) => {
+      this.config.coralCount = Math.floor(v);
+      this.createCorals();
+    });
+
+    const hr4 = document.createElement('hr');
+    hr4.style.border = '0';
+    hr4.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    hr4.style.margin = '16px 0';
+    panel.appendChild(hr4);
+
+    const uwHeader = document.createElement('h3');
+    uwHeader.textContent = '🌊 Underwater Atmos';
+    panel.appendChild(uwHeader);
+
+    const uwToggleRow = document.createElement('div');
+    uwToggleRow.className = 'fog-row';
+    uwToggleRow.innerHTML = `
+      <label>Enabled</label>
+      <input type="checkbox" id="cfg-uw-fog-toggle" ${this.config.uwFogEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer; accent-color: #40b0ff;">
+    `;
+    panel.appendChild(uwToggleRow);
+    const uwFogToggle = document.getElementById('cfg-uw-fog-toggle') as HTMLInputElement;
+    uwFogToggle.addEventListener('change', () => this.config.uwFogEnabled = uwFogToggle.checked);
+
+    addSlider('UW Fog Near', 'cfg-uw-near', 0, 50, 0.5, this.config.uwFogNear, (v) => this.config.uwFogNear = v);
+    addSlider('UW Fog Far', 'cfg-uw-far', 5, 300, 1, this.config.uwFogFar, (v) => this.config.uwFogFar = v);
+
+    const uwColorRow = document.createElement('div');
+    uwColorRow.className = 'fog-row';
+    uwColorRow.innerHTML = `
+      <label>Fog</label>
+      <input type="color" id="cfg-uw-fog-color" value="#${this.config.uwFogColor.toString(16).padStart(6, '0')}">
+      <label>BG</label>
+      <input type="color" id="cfg-uw-bg-color" value="#${this.config.uwBgColor.toString(16).padStart(6, '0')}">
+    `;
+    panel.appendChild(uwColorRow);
+
+    document.getElementById('cfg-uw-fog-color')?.addEventListener('input', (e) => {
+      this.config.uwFogColor = parseInt((e.target as HTMLInputElement).value.replace('#', '0x'), 16);
+    });
+    document.getElementById('cfg-uw-bg-color')?.addEventListener('input', (e) => {
+      this.config.uwBgColor = parseInt((e.target as HTMLInputElement).value.replace('#', '0x'), 16);
     });
   }
 
@@ -1303,21 +1376,38 @@ class VibeScene {
     this.sunRays.children.forEach((ray, i) => {
       ray.rotation.y += dt * 0.1;
       const pulse = Math.sin(t * 0.5 + i) * 0.02;
-      (ray.material as THREE.MeshBasicMaterial).opacity = 0.06 + pulse;
+      ((ray as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.06 + pulse;
     });
 
     // --- Dynamic Underwater Atmosphere ---
     const isUnderwater = this.camera.position.y < 0;
     const fogState = this.scene.fog as THREE.Fog;
-    const targetFogColor = isUnderwater ? new THREE.Color(0x004466) : new THREE.Color(this.skyColor);
-    const targetFogNear = isUnderwater ? 2 : 30;
-    const targetFogFar = isUnderwater ? 80 : 350;
+    const targetFogColor = isUnderwater ? new THREE.Color(this.config.uwFogColor) : new THREE.Color(this.skyColor);
+    const targetBgColor = isUnderwater ? new THREE.Color(this.config.uwBgColor) : new THREE.Color(this.skyColor);
+    let targetFogNear = isUnderwater ? this.config.uwFogNear : this.config.skyFogNear;
+    let targetFogFar = isUnderwater ? this.config.uwFogFar : this.config.skyFogFar;
 
-    fogState.color.lerp(targetFogColor, 0.05);
-    fogState.near += (targetFogNear - fogState.near) * 0.05;
-    fogState.far += (targetFogFar - fogState.far) * 0.05;
-    if (!isUnderwater) this.scene.background = fogState.color;
-    else this.scene.background = new THREE.Color(0x002233); // Darker deep water background
+    // If fog is disabled for the current state, push it far out of view
+    if (isUnderwater && !this.config.uwFogEnabled) {
+      targetFogNear = 1000;
+      targetFogFar = 2000;
+    } else if (!isUnderwater && !this.config.skyFogEnabled) {
+      targetFogNear = 1000;
+      targetFogFar = 2000;
+    }
+
+    // Faster lerp (0.15) for more responsive slider feedback
+    const lerpSpd = 0.15;
+    fogState.color.lerp(targetFogColor, lerpSpd);
+    fogState.near += (targetFogNear - fogState.near) * lerpSpd;
+    fogState.far += (targetFogFar - fogState.far) * lerpSpd;
+    
+    // Smooth background transition
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.lerp(targetBgColor, lerpSpd);
+    } else {
+      this.scene.background = targetBgColor;
+    }
 
     // --- Final render (water shader samples depth texture) ---
     this.renderer.render(this.scene, this.camera);
