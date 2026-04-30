@@ -75,7 +75,7 @@ export class Terrain {
       if (!surface) continue;
 
       const group = new THREE.Group();
-      group.position.set(x, surface.y - 0.05, z);
+      group.position.set(x, surface.y - 0.1, z);
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
       group.rotateY(Math.random() * Math.PI * 2);
 
@@ -125,7 +125,7 @@ export class Terrain {
       const surface = this.getFloorData(x, z);
       if (!surface) continue;
 
-      group.position.set(x, surface.y - 0.05, z);
+      group.position.set(x, surface.y - 0.1, z);
       group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surface.normal);
       group.rotateY(Math.random() * Math.PI * 2);
 

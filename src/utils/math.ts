@@ -2,8 +2,8 @@ import { CONFIG } from '../config';
 
 // Matching JS implementation of the shader noise for perfect object placement
 function hash(x: number, y: number): number {
-    const pX = fract(x * 123.34 + y * 456.21);
-    const pY = fract(x * 456.21 + y * 123.34);
+    const pX = fract(x * 123.34);
+    const pY = fract(y * 456.21);
     const d = pX * (pX + 45.32) + pY * (pY + 45.32);
     return fract((pX + d) * (pY + d));
 }

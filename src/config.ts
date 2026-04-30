@@ -38,7 +38,7 @@ export const CONFIG = {
   // Chunks
   renderDistance: 3,
   chunkSize: 100,
-  terrainSegments: 25,
+  terrainSegments: 100,
 };
 
 export const SKY_COLOR = 0x55ccff;
