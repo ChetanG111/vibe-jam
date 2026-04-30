@@ -9,6 +9,9 @@ class VibeScene {
   private submarine!: THREE.Group;
   private water!: THREE.Mesh;
   private clouds: THREE.Group[] = [];
+  private depthTarget!: THREE.WebGLRenderTarget;
+  private depthMaterial!: THREE.MeshDepthMaterial;
+  private sun!: THREE.DirectionalLight;
   private waterVertices!: Float32Array;
   private waterOrigY!: Float32Array;
   private clock = new THREE.Clock();
@@ -84,15 +87,15 @@ class VibeScene {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     this.scene.add(ambientLight);
 
-    const sun = new THREE.DirectionalLight(0xfffbe8, 1.5);
-    sun.position.set(30, 50, 20);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -80;
-    sun.shadow.camera.right = 80;
-    sun.shadow.camera.top = 80;
-    sun.shadow.camera.bottom = -80;
-    this.scene.add(sun);
+    this.sun = new THREE.DirectionalLight(0xfffbe8, 1.5);
+    this.sun.position.set(30, 50, 20);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.camera.left = -80;
+    this.sun.shadow.camera.right = 80;
+    this.sun.shadow.camera.top = 80;
+    this.sun.shadow.camera.bottom = -80;
+    this.scene.add(this.sun);
 
     // Sky hemisphere: blue sky above, deep blue below
     const hemi = new THREE.HemisphereLight(0x88ddff, 0x0066cc, 0.6);
@@ -111,7 +114,6 @@ class VibeScene {
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getY(i); // before rotation, Y is the second planar axis
-      // Layered sine waves for organic low-poly water
       const wave =
         Math.sin(x * 0.18 + 0.5) * waveAmplitude * 0.6 +
         Math.sin(z * 0.22 + 1.2) * waveAmplitude * 0.5 +
@@ -121,24 +123,117 @@ class VibeScene {
     }
 
     // Store original positions for animation
-    waterGeo.computeVertexNormals();
     this.waterVertices = new Float32Array(pos.array);
     this.waterOrigY = new Float32Array(pos.count);
     for (let i = 0; i < pos.count; i++) {
       this.waterOrigY[i] = pos.getZ(i);
     }
 
-    // Bright cyan-blue flat-shaded material matching the reference
-    const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x14b8e0,       // bright tropical cyan-blue
-      roughness: 0.35,
-      metalness: 0.15,
-      flatShading: true,     // KEY: flat shading gives the low-poly polygon facet look
+    // --- Depth render target for foam ---
+    const dpr = this.renderer.getPixelRatio();
+    const w = Math.floor(window.innerWidth * dpr);
+    const h = Math.floor(window.innerHeight * dpr);
+    
+    this.depthTarget = new THREE.WebGLRenderTarget(w, h);
+    this.depthTarget.depthTexture = new THREE.DepthTexture(w, h);
+    this.depthTarget.depthTexture.format = THREE.DepthFormat;
+    this.depthTarget.depthTexture.type = THREE.UnsignedIntType;
+    
+    // Dedicated depth material for the first pass (performance boost)
+    this.depthMaterial = new THREE.MeshDepthMaterial();
+
+    // --- Custom ShaderMaterial with depth-based foam ---
+    const waterMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime:       { value: 0 },
+        uDepthTex:   { value: this.depthTarget.depthTexture },
+        uResolution: { value: new THREE.Vector2(w, h) },
+        uCameraNear: { value: this.camera.near },
+        uCameraFar:  { value: this.camera.far },
+        uWaterColor: { value: new THREE.Color(0x14b8e0) },
+        uFoamColor:  { value: new THREE.Color(0xffffff) },
+        uSunDir:     { value: new THREE.Vector3().copy(this.sun.position).normalize() },
+        fogColor:    { value: (this.scene.fog as THREE.Fog).color },
+        fogNear:     { value: (this.scene.fog as THREE.Fog).near },
+        fogFar:      { value: (this.scene.fog as THREE.Fog).far },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vWorldPos;
+        varying float vViewZ;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          vec4 mvPos = viewMatrix * worldPos;
+          vViewZ = -mvPos.z;
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform sampler2D uDepthTex;
+        uniform vec2 uResolution;
+        uniform float uCameraNear;
+        uniform float uCameraFar;
+        uniform vec3 uWaterColor;
+        uniform vec3 uFoamColor;
+        uniform vec3 uSunDir;
+        uniform vec3 fogColor;
+        uniform float fogNear;
+        uniform float fogFar;
+
+        varying vec3 vWorldPos;
+        varying float vViewZ;
+
+        float linearizeDepth(float d) {
+          float z = 2.0 * d - 1.0;
+          return (2.0 * uCameraNear * uCameraFar) /
+                 (uCameraFar + uCameraNear - z * (uCameraFar - uCameraNear));
+        }
+
+        void main() {
+          // Flat-shading: derive face normal from screen-space derivatives
+          vec3 fdx = dFdx(vWorldPos);
+          vec3 fdy = dFdy(vWorldPos);
+          vec3 normal = normalize(cross(fdx, fdy));
+          if (normal.y < 0.0) normal = -normal;
+
+          // Simple directional + ambient lighting
+          float NdotL = max(dot(normal, uSunDir), 0.0);
+          float light = 0.45 + NdotL * 0.55;
+          vec3 baseColor = uWaterColor * light;
+
+          // --- Depth-based foam ---
+          vec2 screenUV = gl_FragCoord.xy / uResolution;
+          float sceneDepth = linearizeDepth(texture2D(uDepthTex, screenUV).r);
+          float depthDiff = sceneDepth - vViewZ;
+
+          // Outer foam: fades over ~2 world-units from intersection
+          float outerFoam = 1.0 - smoothstep(0.0, 2.0, depthDiff);
+          // Animated ripple pattern
+          float wave1 = sin(vWorldPos.x * 4.0 + uTime * 1.5) * 0.5 + 0.5;
+          float wave2 = sin(vWorldPos.z * 3.5 - uTime * 1.2) * 0.5 + 0.5;
+          float wave3 = sin((vWorldPos.x + vWorldPos.z) * 2.5 + uTime * 2.0) * 0.5 + 0.5;
+          float pattern = wave1 * 0.4 + wave2 * 0.35 + wave3 * 0.25;
+
+          // Inner foam (very close, solid white edge)
+          float innerFoam = 1.0 - smoothstep(0.0, 0.6, depthDiff);
+
+          float foam = max(innerFoam * 0.85, outerFoam * pattern * 0.7);
+          foam = clamp(foam, 0.0, 1.0);
+
+          vec3 color = mix(baseColor, uFoamColor, foam);
+
+          // --- Fog ---
+          float fogFactor = smoothstep(fogNear, fogFar, vViewZ);
+          color = mix(color, fogColor, fogFactor);
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
     });
 
     this.water = new THREE.Mesh(waterGeo, waterMat);
     this.water.rotation.x = -Math.PI / 2;
-    this.water.receiveShadow = true;
     this.scene.add(this.water);
   }
 
@@ -146,7 +241,7 @@ class VibeScene {
     const sub = new THREE.Group();
     const yellowMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3, flatShading: false });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 });
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x00ccff, metalness: 0.9, roughness: 0.1 });
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x1a5fff, metalness: 0.9, roughness: 0.1 });
 
     // Main Body (Capsule)
     const bodyGeo = new THREE.CapsuleGeometry(0.8, 1.8, 8, 24);
@@ -291,13 +386,7 @@ class VibeScene {
         group.add(small);
       }
 
-      // Tiny white foam ring at the waterline
-      const foamGeo = new THREE.TorusGeometry(def.scale * 1.1, 0.12, 6, 18);
-      const foamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
-      const foam = new THREE.Mesh(foamGeo, foamMat);
-      foam.rotation.x = Math.PI / 2;
-      foam.position.y = 0.05;
-      group.add(foam);
+      // (foam is now generated by the water's depth-based shader)
 
       this.scene.add(group);
     }
@@ -336,12 +425,7 @@ class VibeScene {
         islandGroup.add(tree);
       }
 
-      const sandGeo = new THREE.TorusGeometry(scale * 1.05, 0.2, 8, 32);
-      const sandMat = new THREE.MeshStandardMaterial({ color: 0xeeddaa, flatShading: true });
-      const sand = new THREE.Mesh(sandGeo, sandMat);
-      sand.rotation.x = Math.PI / 2;
-      sand.position.y = 0.1;
-      islandGroup.add(sand);
+      // (foam is now generated by the water's depth-based shader)
     }
 
     this.scene.add(islandGroup);
@@ -419,6 +503,14 @@ class VibeScene {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Resize depth render target to match
+    const dpr = this.renderer.getPixelRatio();
+    const w = Math.floor(window.innerWidth * dpr);
+    const h = Math.floor(window.innerHeight * dpr);
+    this.depthTarget.setSize(w, h);
+    const mat = this.water.material as THREE.ShaderMaterial;
+    mat.uniforms.uResolution.value.set(w, h);
   }
 
   private createFogPanel() {
@@ -571,7 +663,7 @@ class VibeScene {
     if (this.keys.has('KeyS')) targetPitch += 0.04;
     this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.12;
 
-    // --- Water animation ---
+    // --- Water animation (vertex displacement) ---
     const pos = this.water.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
       const x = this.waterVertices[i * 3];
@@ -585,7 +677,6 @@ class VibeScene {
       pos.setZ(i, newZ);
     }
     pos.needsUpdate = true;
-    this.water.geometry.computeVertexNormals();
 
     // --- Lock submarine to water surface ---
     const surfaceY = this.getWaterHeight(
@@ -596,10 +687,8 @@ class VibeScene {
 
     // --- Camera ---
     if (this.cameraMode === 'orbit') {
-      // OrbitControls takes over — just let it update
       this.controls.update();
     } else {
-      // Third-person follow camera
       const fwdX = Math.cos(this.submarineHeading);
       const fwdZ = -Math.sin(this.submarineHeading);
 
@@ -607,7 +696,6 @@ class VibeScene {
       const targetCamY = this.submarine.position.y + 5;
       const targetCamZ = this.submarine.position.z - fwdZ * 12;
 
-      // snapCamera = true means instant repositioning (used right after mode switch)
       const lerp = this.snapCamera ? 1.0 : 0.06;
       this.snapCamera = false;
 
@@ -622,12 +710,34 @@ class VibeScene {
       );
     }
 
+    // --- Depth pass: render scene into depth target ---
+    const waterMat = this.water.material as THREE.ShaderMaterial;
+    waterMat.uniforms.uTime.value = t;
+    
+    // Sync uniforms (sun direction and fog)
+    waterMat.uniforms.uSunDir.value.copy(this.sun.position).normalize();
+    const fog = this.scene.fog as THREE.Fog;
+    waterMat.uniforms.fogColor.value.copy(fog.color);
+    waterMat.uniforms.fogNear.value = fog.near;
+    waterMat.uniforms.fogFar.value = fog.far;
+
+    this.water.visible = false;
+    this.scene.overrideMaterial = this.depthMaterial;
+    
+    this.renderer.setRenderTarget(this.depthTarget);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setRenderTarget(null);
+    
+    this.scene.overrideMaterial = null;
+    this.water.visible = true;
+
     // --- Drift clouds ---
     this.clouds.forEach((cloud, index) => {
       cloud.position.x += 0.008 * (1 + (index % 3) * 0.4);
       if (cloud.position.x > 110) cloud.position.x = -110;
     });
 
+    // --- Final render (water shader samples depth texture) ---
     this.renderer.render(this.scene, this.camera);
   }
 
