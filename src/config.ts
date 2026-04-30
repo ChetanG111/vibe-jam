@@ -1,7 +1,7 @@
 
 
 export const CONFIG = {
-  moveSpeed: 8,
+  moveSpeed: 16,
   turnSpeed: 1.8,
   propMaxSpeed: 22,
   waveSpeed: 1.0,
@@ -9,8 +9,8 @@ export const CONFIG = {
   waterOpacity: 0.85,
   subSink: -0.1,
   foamIntensity: 2.0,
-  camDist: 12,
-  camHeight: 5,
+  camDist: 20.5,
+  camHeight: 4,
   camFOV: 50,
   // Wake Particles
   wakeEnabled: true,
@@ -39,6 +39,18 @@ export const CONFIG = {
   renderDistance: 3,
   chunkSize: 100,
   terrainSegments: 100,
+  skyPreset: 0,
+  cloudCount: 140,
 };
+
+export const SKY_PRESETS = [
+  { name: 'Day Blue', top: '#2FA8FF', bottom: '#87D3FF' },
+  { name: 'Warm Sunset', top: '#1A1A2E', bottom: '#FF7A4D' },
+  { name: 'Vibrant Sunset', top: '#2E1A47', bottom: '#FF9E7D' },
+  { name: 'Peach Sunrise', top: '#FFB4A2', bottom: '#FFE5D9' },
+  { name: 'Teal Tropic', top: '#2EC4B6', bottom: '#4CC9F0' },
+  { name: 'Indigo Night', top: '#1D3557', bottom: '#6A4C93' },
+  { name: 'Deep Navy', top: '#0B2A3A', bottom: '#1F5F7A' }
+];
 
 export const SKY_COLOR = 0x55ccff;

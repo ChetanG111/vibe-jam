@@ -1,4 +1,4 @@
-import { CONFIG, SKY_COLOR } from '../config';
+import { CONFIG, SKY_PRESETS } from '../config';
 
 export class UIManager {
   constructor(
@@ -7,7 +7,9 @@ export class UIManager {
     private onCreateRocks: () => void,
     private onCreateCorals: () => void,
     private onWaterOpacityUpdate: (v: number) => void,
-    private onFoamIntensityUpdate: (v: number) => void
+    private onFoamIntensityUpdate: (v: number) => void,
+    private onSkyPresetUpdate: (v: number) => void,
+    private onCloudCountUpdate: (v: number) => void
   ) {
     this.createFogPanel();
     this.createControlsHUD();
@@ -67,8 +69,18 @@ export class UIManager {
       </div>
       <div class="fog-row">
         <label>Color</label>
-        <input type="color" id="fog-color" value="#${SKY_COLOR.toString(16).padStart(6, '0')}">
+        <input type="color" id="fog-color" value="${SKY_PRESETS[CONFIG.skyPreset].bottom}">
         <span class="val">sky</span>
+      </div>
+      <div class="fog-row">
+        <label>Preset</label>
+        <input type="range" id="cfg-sky-preset" min="0" max="5" step="1" value="${CONFIG.skyPreset}">
+        <span class="val" id="sky-preset-name">${SKY_PRESETS[CONFIG.skyPreset].name}</span>
+      </div>
+      <div class="fog-row">
+        <label>Clouds</label>
+        <input type="range" id="cfg-cloud-count" min="0" max="500" step="5" value="${CONFIG.cloudCount}">
+        <span class="val" id="cloud-count-val">${CONFIG.cloudCount}</span>
       </div>
     `;
     document.body.appendChild(panel);
@@ -83,6 +95,18 @@ export class UIManager {
       const val = parseFloat((e.target as HTMLInputElement).value);
       this.onConfigUpdate('skyFogFar', val);
       document.getElementById('fog-far-val')!.textContent = val.toString();
+    });
+    document.getElementById('cfg-sky-preset')?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value);
+      this.onConfigUpdate('skyPreset', val);
+      document.getElementById('sky-preset-name')!.textContent = SKY_PRESETS[val].name;
+      this.onSkyPresetUpdate(val);
+    });
+    document.getElementById('cfg-cloud-count')?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value);
+      this.onConfigUpdate('cloudCount', val);
+      document.getElementById('cloud-count-val')!.textContent = val.toString();
+      this.onCloudCountUpdate(val);
     });
 
     const addSlider = (label: string, id: string, min: number, max: number, step: number, val: number, onChange: (v: number) => void) => {

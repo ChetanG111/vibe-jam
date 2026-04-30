@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { CONFIG, SKY_COLOR } from './config';
+import { CONFIG, SKY_PRESETS } from './config';
 import { WATER_VERTEX_SHADER, WATER_FRAGMENT_SHADER } from './shaders/waterShader';
 import { getWaterHeight } from './utils/math';
 import { Submarine } from './entities/Submarine';
@@ -36,8 +36,9 @@ class VibeScene {
 
   constructor() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(SKY_COLOR);
-    this.scene.fog = new THREE.Fog(SKY_COLOR, CONFIG.skyFogNear, CONFIG.skyFogFar);
+    const initialSkyColor = new THREE.Color(SKY_PRESETS[CONFIG.skyPreset].bottom);
+    this.scene.background = initialSkyColor;
+    this.scene.fog = new THREE.Fog(initialSkyColor, CONFIG.skyFogNear, CONFIG.skyFogFar);
 
     this.camera = new THREE.PerspectiveCamera(CONFIG.camFOV, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(20, 10, 25);
@@ -75,7 +76,9 @@ class VibeScene {
       () => this.terrain.createRocks(),
       () => this.terrain.createCorals(),
       (v) => this.waterMat.uniforms.uOpacity.value = v,
-      (v) => this.waterMat.uniforms.uFoamStrength.value = v
+      (v) => this.waterMat.uniforms.uFoamStrength.value = v,
+      (v) => this.updateSkyPreset(v),
+      (v) => this.atmosphere.updateCloudCount(v)
     );
 
     window.addEventListener('resize', () => this.onWindowResize());
@@ -129,6 +132,19 @@ class VibeScene {
       this.cameraMode = 'follow';
       this.controls.enabled = false;
       this.snapCamera = true;
+    }
+  }
+
+  private updateSkyPreset(index: number) {
+    this.atmosphere.updateSkyColors(index);
+    // Force update of fog and background colors if not underwater
+    if (this.camera.position.y >= 0) {
+      const preset = SKY_PRESETS[index];
+      const bottomColor = new THREE.Color(preset.bottom);
+      (this.scene.fog as THREE.Fog).color.copy(bottomColor);
+      if (this.scene.background instanceof THREE.Color) {
+        this.scene.background.copy(bottomColor);
+      }
     }
   }
 
@@ -250,12 +266,13 @@ class VibeScene {
     this.wakeParticles.setVisible(CONFIG.wakeEnabled);
     this.wakeParticles.setOpacity(CONFIG.wakeOpacity);
 
-    this.atmosphere.update(dt, t);
+    this.atmosphere.update(dt, t, this.camera.position);
 
     // Underwater transition
     const isUnderwater = this.camera.position.y < 0;
-    const targetFogColor = isUnderwater ? new THREE.Color(CONFIG.uwFogColor) : new THREE.Color(SKY_COLOR);
-    const targetBgColor = isUnderwater ? new THREE.Color(CONFIG.uwBgColor) : new THREE.Color(SKY_COLOR);
+    const currentSkyBottom = new THREE.Color(SKY_PRESETS[CONFIG.skyPreset].bottom);
+    const targetFogColor = isUnderwater ? new THREE.Color(CONFIG.uwFogColor) : currentSkyBottom;
+    const targetBgColor = isUnderwater ? new THREE.Color(CONFIG.uwBgColor) : currentSkyBottom;
     let targetFogNear = isUnderwater ? CONFIG.uwFogNear : CONFIG.skyFogNear;
     let targetFogFar = isUnderwater ? CONFIG.uwFogFar : CONFIG.skyFogFar;
 
