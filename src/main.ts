@@ -190,14 +190,8 @@ class VibeScene {
     // Animations
     gsap.to(prop.rotation, { x: Math.PI * 2, duration: 1, repeat: -1, ease: 'none' });
 
-    gsap.to(sub.position, {
-      y: -0.4,
-      duration: 2.5,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut',
-    });
-
+    // NOTE: Y position is driven in animate() to track the water surface.
+    // Only keep the gentle rotation bob here.
     gsap.to(sub.rotation, {
       z: 0.05,
       x: 0.02,
@@ -207,8 +201,24 @@ class VibeScene {
       ease: 'sine.inOut',
     });
 
-    sub.position.y = -0.2;
+    // Starting Y will be overridden each frame in animate()
+    sub.position.y = 0.7;
     return sub;
+  }
+
+  /**
+   * Returns the animated water surface height at world (x, z) using the
+   * same analytical formula that drives the vertex animation in animate().
+   * The random per-vertex base offsets average near zero so we skip them
+   * for a clean, continuous sample.
+   */
+  private getWaterHeight(worldX: number, worldZ: number): number {
+    const t = this.clock.getElapsedTime();
+    return (
+      Math.sin(worldX * 0.2 + t * 0.6) * 0.18 +
+      Math.sin(worldZ * 0.25 + t * 0.45) * 0.14 +
+      Math.sin((worldX + worldZ) * 0.15 + t * 0.5) * 0.1
+    );
   }
 
   private createIslands() {
@@ -529,6 +539,15 @@ class VibeScene {
     }
     pos.needsUpdate = true;
     this.water.geometry.computeVertexNormals();
+
+    // --- Submarine: always ride the water surface ---
+    // Body capsule radius = 0.8. We want 7-8% of diameter (≈0.11 units) below waterline.
+    // So submarine center Y = surfaceY + 0.8 - 0.11 = surfaceY + 0.69
+    const subX = this.submarine.position.x;
+    const subZ = this.submarine.position.z;
+    const surfaceY = this.getWaterHeight(subX, subZ);
+    // Lock Y — no GSAP y-animation overrides this because we removed it
+    this.submarine.position.y = surfaceY + 0.69;
 
     // Drift clouds
     this.clouds.forEach((cloud, index) => {
