@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
-import { getFloorHeight, getFacetedFloorHeight } from '../utils/math';
+import { getFacetedFloorHeight } from '../utils/math';
 import { FLOOR_VERTEX_SHADER, FLOOR_FRAGMENT_SHADER } from '../shaders/floorShader';
 
 export class Terrain {
