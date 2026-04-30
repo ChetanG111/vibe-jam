@@ -36,12 +36,35 @@ class VibeScene {
     waveSpeed: 1.0,
     waveHeight: 1.0,
     waterOpacity: 0.85,
-    subSink: 0.6,
+    subSink: -0.1, // New default for better water contact
     foamIntensity: 2.0,
     camDist: 12,
     camHeight: 5,
-    camFOV: 50
+    camFOV: 50,
+    // Wake Particles
+    wakeEnabled: true,
+    wakeCount: 500,
+    wakeSize: 0.3,
+    wakeLifetime: 0.7,
+    wakeSpeed: 1.2,
+    wakeSpread: 0.6,
+    wakeBuoyancy: -0.1,
+    wakeOpacity: 0.6,
+    wakeOffset: 0.45
   };
+
+  // --- Particles state ---
+  private wakeMesh!: THREE.InstancedMesh;
+  private wakeData: Array<{
+    active: boolean;
+    pos: THREE.Vector3;
+    vel: THREE.Vector3;
+    life: number;
+    maxLife: number;
+    scale: number;
+  }> = [];
+  private nextWakeIndex = 0;
+  private spawnAccumulator = 0;
 
   constructor() {
     // 1. Basic Setup
@@ -89,7 +112,10 @@ class VibeScene {
     this.submarine = this.createCartoonSubmarine();
     this.scene.add(this.submarine);
     
-    // 5. UI Controls
+    // 5. Wake Particles
+    this.createWakeParticles();
+    
+    // 6. UI Controls
     this.createFogPanel();
     this.createControlsHUD();
     this.createCameraToggle();
@@ -292,25 +318,27 @@ class VibeScene {
     pScopeLens.position.set(0.25, 1.7, 0);
     sub.add(pScopeLens);
 
-    // Faceted Portholes with dark borders
-    for (let i = 0; i < 3; i++) {
-      const portGroup = new THREE.Group();
-      portGroup.position.set(-0.6 + i * 0.7, 0, 0.78);
-      
-      // Border/Frame
-      const frameGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.05, 8);
-      const frame = new THREE.Mesh(frameGeo, darkMat);
-      frame.rotation.x = Math.PI / 2;
-      portGroup.add(frame);
+    // Faceted Portholes with dark borders (both sides)
+    [0.78, -0.78].forEach(zPos => {
+      for (let i = 0; i < 3; i++) {
+        const portGroup = new THREE.Group();
+        portGroup.position.set(-0.6 + i * 0.7, 0, zPos);
+        
+        // Border/Frame
+        const frameGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.05, 8);
+        const frame = new THREE.Mesh(frameGeo, darkMat);
+        frame.rotation.x = Math.PI / 2;
+        portGroup.add(frame);
 
-      // Glass (faceted cylinder)
-      const glassGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.06, 8);
-      const glass = new THREE.Mesh(glassGeo, blueMat);
-      glass.rotation.x = Math.PI / 2;
-      portGroup.add(glass);
+        // Glass (faceted cylinder)
+        const glassGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.06, 8);
+        const glass = new THREE.Mesh(glassGeo, blueMat);
+        glass.rotation.x = Math.PI / 2;
+        portGroup.add(glass);
 
-      sub.add(portGroup);
-    }
+        sub.add(portGroup);
+      }
+    });
 
     // Propeller base
     const propBaseGeo = new THREE.CylinderGeometry(0.15, 0.3, 0.4, 6);
@@ -484,6 +512,121 @@ class VibeScene {
       tree.add(leaf);
     }
     return tree;
+  }
+
+  private createWakeParticles() {
+    const geo = new THREE.IcosahedronGeometry(1, 0); // Low-poly sphere
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x444444,
+      transparent: true,
+      opacity: this.config.wakeOpacity,
+      flatShading: true,
+      roughness: 0.2
+    });
+
+    this.wakeMesh = new THREE.InstancedMesh(geo, mat, this.config.wakeCount);
+    this.wakeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.wakeMesh.frustumCulled = false; // Prevent disappearing when sub is at edge
+    this.scene.add(this.wakeMesh);
+
+    // Initialize data
+    for (let i = 0; i < this.config.wakeCount; i++) {
+      this.wakeData.push({
+        active: false,
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        life: 0,
+        maxLife: 0,
+        scale: 0
+      });
+      
+      // Initially hide them far away
+      const dummy = new THREE.Object3D();
+      dummy.position.set(0, -100, 0);
+      dummy.updateMatrix();
+      this.wakeMesh.setMatrixAt(i, dummy.matrix);
+    }
+    this.wakeMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private spawnWakeParticle() {
+    if (!this.config.wakeEnabled) return;
+
+    const data = this.wakeData[this.nextWakeIndex];
+    data.active = true;
+    
+    // Position at propeller
+    const fwdX = Math.cos(this.submarineHeading);
+    const fwdZ = -Math.sin(this.submarineHeading);
+    
+    // Behind the sub
+    data.pos.set(
+      this.submarine.position.x - fwdX * 1.8,
+      0, // Will be set below
+      this.submarine.position.z - fwdZ * 1.8
+    );
+
+    // Add some spread
+    data.pos.x += (Math.random() - 0.5) * this.config.wakeSpread;
+    data.pos.z += (Math.random() - 0.5) * this.config.wakeSpread;
+    
+    // Start exactly at water surface + custom offset
+    data.pos.y = this.getWaterHeight(data.pos.x, data.pos.z) + this.config.wakeOffset;
+
+    // Velocity: mostly backwards + some random spread
+    const speed = this.config.wakeSpeed * (0.8 + Math.random() * 0.4);
+    data.vel.set(
+      -fwdX * speed + (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 0.5,
+      -fwdZ * speed + (Math.random() - 0.5) * 0.5
+    );
+
+    data.maxLife = this.config.wakeLifetime * (0.8 + Math.random() * 0.4);
+    data.life = data.maxLife;
+    data.scale = this.config.wakeSize * (0.6 + Math.random() * 0.8);
+
+    this.nextWakeIndex = (this.nextWakeIndex + 1) % this.config.wakeCount;
+  }
+
+  private updateWakeParticles(dt: number) {
+    const dummy = new THREE.Object3D();
+    let needsUpdate = false;
+
+    for (let i = 0; i < this.config.wakeCount; i++) {
+      const data = this.wakeData[i];
+      if (!data.active) continue;
+
+      data.life -= dt;
+      if (data.life <= 0) {
+        data.active = false;
+        dummy.position.set(0, -100, 0);
+        dummy.updateMatrix();
+        this.wakeMesh.setMatrixAt(i, dummy.matrix);
+        needsUpdate = true;
+        continue;
+      }
+
+      // Physics
+      data.pos.addScaledVector(data.vel, dt);
+      data.vel.y += this.config.wakeBuoyancy * dt; // Float up
+      data.vel.multiplyScalar(0.98); // Drag
+
+      // Scale over life: grow fast, then stay visible, then shrink
+      const lifePct = data.life / data.maxLife; // 1.0 -> 0.0
+      const s = data.scale * Math.sin(Math.pow(1.0 - lifePct, 0.5) * Math.PI);
+
+      dummy.position.copy(data.pos);
+      dummy.scale.setScalar(s);
+      dummy.rotation.y += dt * 2;
+      dummy.updateMatrix();
+      this.wakeMesh.setMatrixAt(i, dummy.matrix);
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      this.wakeMesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private createClouds() {
@@ -724,7 +867,7 @@ class VibeScene {
     addSlider('Prop Max', 'cfg-prop', 5, 50, 1, this.config.propMaxSpeed, (v) => this.config.propMaxSpeed = v);
     addSlider('Wave Spd', 'cfg-w-spd', 0, 3, 0.1, this.config.waveSpeed, (v) => this.config.waveSpeed = v);
     addSlider('Wave Hgt', 'cfg-w-hgt', 0, 5, 0.1, this.config.waveHeight, (v) => this.config.waveHeight = v);
-    addSlider('Sub Sink', 'cfg-sink', 0, 0.8, 0.05, this.config.subSink, (v) => this.config.subSink = v);
+    addSlider('Sub Sink', 'cfg-sink', -2, 1.5, 0.05, this.config.subSink, (v) => this.config.subSink = v);
     addSlider('Foam', 'cfg-foam', 0, 5, 0.05, this.config.foamIntensity, (v) => {
       this.config.foamIntensity = v;
       const mat = this.water.material as THREE.ShaderMaterial;
@@ -737,6 +880,37 @@ class VibeScene {
       this.config.camFOV = v;
       this.camera.fov = v;
       this.camera.updateProjectionMatrix();
+    });
+
+    const hr2 = document.createElement('hr');
+    hr2.style.border = '0';
+    hr2.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    hr2.style.margin = '16px 0';
+    panel.appendChild(hr2);
+
+    // Toggle for Wake
+    const wakeRow = document.createElement('div');
+    wakeRow.className = 'fog-row';
+    wakeRow.innerHTML = `
+      <label>Wake</label>
+      <input type="checkbox" id="cfg-wake-toggle" ${this.config.wakeEnabled ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer; accent-color: #40b0ff;">
+    `;
+    panel.appendChild(wakeRow);
+    const wakeToggle = document.getElementById('cfg-wake-toggle') as HTMLInputElement;
+    wakeToggle.addEventListener('change', () => {
+      this.config.wakeEnabled = wakeToggle.checked;
+      this.wakeMesh.visible = wakeToggle.checked;
+    });
+
+    addSlider('Wake Size', 'cfg-wake-size', 0.05, 1.0, 0.05, this.config.wakeSize, (v) => this.config.wakeSize = v);
+    addSlider('Wake Life', 'cfg-wake-life', 0.2, 5.0, 0.1, this.config.wakeLifetime, (v) => this.config.wakeLifetime = v);
+    addSlider('Wake Spd', 'cfg-wake-spd', 0, 5, 0.1, this.config.wakeSpeed, (v) => this.config.wakeSpeed = v);
+    addSlider('Wake Sprd', 'cfg-wake-sprd', 0, 2, 0.1, this.config.wakeSpread, (v) => this.config.wakeSpread = v);
+    addSlider('Wake Hgt', 'cfg-wake-hgt-off', -1, 1, 0.05, this.config.wakeOffset, (v) => this.config.wakeOffset = v);
+    addSlider('Buoyancy', 'cfg-wake-buoy', -0.5, 1.0, 0.05, this.config.wakeBuoyancy, (v) => this.config.wakeBuoyancy = v);
+    addSlider('Wake Opac', 'cfg-wake-opac', 0, 1, 0.05, this.config.wakeOpacity, (v) => {
+      this.config.wakeOpacity = v;
+      (this.wakeMesh.material as THREE.MeshStandardMaterial).opacity = v;
     });
   }
 
@@ -783,13 +957,29 @@ class VibeScene {
     const avgSurfaceY = (noseY + midY + tailY) / 3;
     const wavePitch = Math.atan2(noseY - tailY, sampleDist * 2);
 
-    // Set position with custom sink depth
-    this.submarine.position.y = avgSurfaceY + this.config.subSink;
+    // --- User's Requested Approach: Wave Envelope Buoyancy ---
+    // 1. Calculate the theoretical maximum and minimum water height 
+    // based on the wave function coefficients (0.18 + 0.14 + 0.1 = 0.42).
+    const maxWaveAmp = (0.18 + 0.14 + 0.1) * this.config.waveHeight;
+    const minWaveAmp = -maxWaveAmp;
+
+    // 2. Calculate the "Propeller Gap" (how much lower/higher the tail is than the average)
+    const propellerGap = tailY - avgSurfaceY;
+
+    // 3. Create a dynamic sink that compensates for the gap, 
+    // ensuring the sub "dips" into troughs to keep the propeller in water.
+    // We clamp it within the theoretical wave range.
+    const dynamicSink = THREE.MathUtils.clamp(propellerGap, minWaveAmp, maxWaveAmp);
+
+    // 4. Apply the dynamic sink + the user's base subSink.
+    // We use a high lerp factor (0.9) to make it snappy and responsive.
+    const targetY = avgSurfaceY + dynamicSink + this.config.subSink;
+    this.submarine.position.y += (targetY - this.submarine.position.y) * 0.8;
 
     let targetPitch = Math.sin(t * 0.6) * 0.02 + wavePitch;
-    if (this.keys.has('KeyW')) targetPitch -= 0.06;
-    if (this.keys.has('KeyS')) targetPitch += 0.04;
-    this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.12;
+    if (this.keys.has('KeyW')) targetPitch -= 0.08; // More aggressive tilt
+    if (this.keys.has('KeyS')) targetPitch += 0.06;
+    this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.25; // Faster pitch response
 
     // --- Water animation (vertex displacement) ---
     const waterPos = this.water.geometry.attributes.position as THREE.BufferAttribute;
@@ -866,6 +1056,20 @@ class VibeScene {
     
     this.scene.overrideMaterial = null;
     this.water.visible = true;
+
+    // --- Wake Particles ---
+    if (this.config.wakeEnabled) {
+      // Spawn based on propeller speed
+      const absPropSpeed = Math.abs(this.currentPropSpeed);
+      if (absPropSpeed > 2) {
+        this.spawnAccumulator += dt * absPropSpeed * 4.0; // Higher spawn rate
+        while (this.spawnAccumulator > 1) {
+          this.spawnWakeParticle();
+          this.spawnAccumulator -= 1;
+        }
+      }
+      this.updateWakeParticles(dt);
+    }
 
     // --- Drift clouds ---
     this.clouds.forEach((cloud, index) => {
