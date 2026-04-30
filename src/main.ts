@@ -396,11 +396,12 @@ class VibeScene {
    */
   private getWaterHeight(worldX: number, worldZ: number): number {
     const t = this.clock.getElapsedTime();
-    return (
+    let wave = 
       Math.sin(worldX * 0.2 + t * 0.6 * this.config.waveSpeed) * 0.18 * this.config.waveHeight +
       Math.sin(worldZ * 0.25 + t * 0.45 * this.config.waveSpeed) * 0.14 * this.config.waveHeight +
-      Math.sin((worldX + worldZ) * 0.15 + t * 0.5 * this.config.waveSpeed) * 0.1 * this.config.waveHeight
-    );
+      Math.sin((worldX + worldZ) * 0.15 + t * 0.5 * this.config.waveSpeed) * 0.1 * this.config.waveHeight;
+    
+    return wave;
   }
 
   /** Returns the floor height at world (x, z) */
@@ -638,22 +639,14 @@ class VibeScene {
   private addChunk(cx: number, cz: number) {
     const key = `${cx},${cz}`;
     const size = this.config.chunkSize;
-    const segments = 25; // 100 / 25 = 4.0 units per segment
+    const segments = 25; 
     
     const xOffset = cx * size;
     const zOffset = cz * size;
 
     // --- Water Chunk ---
+    // Use exact size to avoid transparent overlap artifacts (the blue lines)
     const waterGeo = new THREE.PlaneGeometry(size, size, segments, segments);
-    // Add DETERMINISTIC jitter for low-poly look (so edges match between chunks)
-    const wPos = waterGeo.attributes.position;
-    for (let i = 0; i < wPos.count; i++) {
-      const vx = wPos.getX(i) + xOffset;
-      const vz = wPos.getY(i) + zOffset;
-      // Deterministic pseudo-random jitter based on world coordinates
-      const jitter = (Math.sin(vx * 1.5) * Math.cos(vz * 1.5) * 0.4);
-      wPos.setZ(i, jitter);
-    }
     const waterChunk = new THREE.Mesh(waterGeo, this.waterMat);
     waterChunk.rotation.x = -Math.PI / 2;
     waterChunk.position.set(xOffset, 0, zOffset);
@@ -957,22 +950,7 @@ class VibeScene {
     }
   }
 
-  private onWindowResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-
-    // Resize depth render target to match
-    const dpr = this.renderer.getPixelRatio();
-    const w = Math.floor(window.innerWidth * dpr);
-    const h = Math.floor(window.innerHeight * dpr);
-    this.depthTarget.setSize(w, h);
-    const mat = this.water.material as THREE.ShaderMaterial;
-    mat.uniforms.uResolution.value.set(w, h);
-  }
-
   private createFogPanel() {
-    const fog = this.scene.fog as THREE.Fog;
 
     const panel = document.createElement('div');
     panel.id = 'fog-panel';
@@ -1161,8 +1139,7 @@ class VibeScene {
 
     addSlider('Opacity', 'cfg-opacity', 0.1, 1, 0.01, this.config.waterOpacity, (v) => {
       this.config.waterOpacity = v;
-      const mat = this.water.material as THREE.ShaderMaterial;
-      mat.uniforms.uOpacity.value = v;
+      this.waterMat.uniforms.uOpacity.value = v;
     });
 
     addSlider('Sub Speed', 'cfg-speed', 1, 30, 0.5, this.config.moveSpeed, (v) => this.config.moveSpeed = v);
@@ -1173,8 +1150,7 @@ class VibeScene {
     addSlider('Sub Sink', 'cfg-sink', -2, 1.5, 0.05, this.config.subSink, (v) => this.config.subSink = v);
     addSlider('Foam', 'cfg-foam', 0, 5, 0.05, this.config.foamIntensity, (v) => {
       this.config.foamIntensity = v;
-      const mat = this.water.material as THREE.ShaderMaterial;
-      mat.uniforms.uFoamStrength.value = v;
+      this.waterMat.uniforms.uFoamStrength.value = v;
     });
 
     addSlider('Cam Dist', 'cfg-cam-d', 2, 40, 0.5, this.config.camDist, (v) => this.config.camDist = v);
@@ -1580,6 +1556,27 @@ class VibeScene {
         btn.classList.remove('orbit-active');
       }
     });
+  }
+
+  private onWindowResize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const dpr = this.renderer.getPixelRatio();
+
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(w, h);
+    
+    // Resize depth target
+    const rw = Math.floor(w * dpr);
+    const rh = Math.floor(h * dpr);
+    this.depthTarget.setSize(rw, rh);
+    
+    // Update shader resolution uniform
+    if (this.waterMat) {
+      this.waterMat.uniforms.uResolution.value.set(rw, rh);
+    }
   }
 }
 
