@@ -136,14 +136,13 @@ class VibeScene {
   }
 
   private updateSkyPreset(index: number) {
-    this.atmosphere.updateSkyColors(index);
+    this.atmosphere.updateSkyColors();
     // Force update of fog and background colors if not underwater
     if (this.camera.position.y >= 0) {
-      const preset = SKY_PRESETS[index];
-      const bottomColor = new THREE.Color(preset.bottom);
-      (this.scene.fog as THREE.Fog).color.copy(bottomColor);
+      const horizonColor = new THREE.Color('#F7B267');
+      (this.scene.fog as THREE.Fog).color.copy(horizonColor);
       if (this.scene.background instanceof THREE.Color) {
-        this.scene.background.copy(bottomColor);
+        this.scene.background.copy(horizonColor);
       }
     }
   }

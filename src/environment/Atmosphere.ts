@@ -23,7 +23,6 @@ export class Atmosphere {
 
   private createSky() {
     const skyGeo = new THREE.SphereGeometry(450, 32, 15);
-    const preset = SKY_PRESETS[CONFIG.skyPreset];
     
     this.skyMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -44,7 +43,7 @@ export class Atmosphere {
     this.scene.add(this.skyMesh);
   }
 
-  public updateSkyColors(presetIndex: number) {
+  public updateSkyColors() {
     // Ditching the multi-preset system for now to focus on the reference gradient
     // as requested by the user.
   }
