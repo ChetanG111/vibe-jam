@@ -36,9 +36,9 @@ class VibeScene {
 
   constructor() {
     this.scene = new THREE.Scene();
-    const initialSkyColor = new THREE.Color(SKY_PRESETS[CONFIG.skyPreset].bottom);
-    this.scene.background = initialSkyColor;
-    this.scene.fog = new THREE.Fog(initialSkyColor, CONFIG.skyFogNear, CONFIG.skyFogFar);
+    const horizonColor = new THREE.Color('#F7B267');
+    this.scene.background = horizonColor;
+    this.scene.fog = new THREE.Fog(horizonColor, CONFIG.skyFogNear, CONFIG.skyFogFar);
 
     this.camera = new THREE.PerspectiveCamera(CONFIG.camFOV, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(20, 10, 25);
@@ -270,9 +270,9 @@ class VibeScene {
 
     // Underwater transition
     const isUnderwater = this.camera.position.y < 0;
-    const currentSkyBottom = new THREE.Color(SKY_PRESETS[CONFIG.skyPreset].bottom);
-    const targetFogColor = isUnderwater ? new THREE.Color(CONFIG.uwFogColor) : currentSkyBottom;
-    const targetBgColor = isUnderwater ? new THREE.Color(CONFIG.uwBgColor) : currentSkyBottom;
+    const horizonColor = new THREE.Color('#F7B267'); // Match Stop 7 of the sky
+    const targetFogColor = isUnderwater ? new THREE.Color(CONFIG.uwFogColor) : horizonColor;
+    const targetBgColor = isUnderwater ? new THREE.Color(CONFIG.uwBgColor) : horizonColor;
     let targetFogNear = isUnderwater ? CONFIG.uwFogNear : CONFIG.skyFogNear;
     let targetFogFar = isUnderwater ? CONFIG.uwFogFar : CONFIG.skyFogFar;
 

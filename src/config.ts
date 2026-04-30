@@ -40,7 +40,7 @@ export const CONFIG = {
   chunkSize: 100,
   terrainSegments: 100,
   skyPreset: 0,
-  cloudCount: 140,
+  cloudCount: 35,
 };
 
 export const SKY_PRESETS = [
