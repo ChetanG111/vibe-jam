@@ -182,7 +182,7 @@ class VibeScene {
     if (this.keys.has('KeyS')) targetPitch += 0.06;
     this.submarine.mesh.rotation.x += (targetPitch - this.submarine.mesh.rotation.x) * 0.25;
 
-    this.terrain.updateChunks(this.submarine.mesh.position.x, this.submarine.mesh.position.z);
+    this.terrain.updateChunks([this.submarine.mesh.position, this.camera.position]);
 
     // Camera
     if (this.cameraMode === 'orbit') {
@@ -208,15 +208,24 @@ class VibeScene {
     this.currentPropSpeed += (targetSpeed - this.currentPropSpeed) * propLerp;
     this.submarine.propeller.rotation.x += this.currentPropSpeed * dt;
 
-    // Depth pass
+    // Sync shader uniforms
     this.waterMat.uniforms.uTime.value = t;
     this.waterMat.uniforms.uWaveSpeed.value = CONFIG.waveSpeed;
     this.waterMat.uniforms.uWaveHeight.value = CONFIG.waveHeight;
     this.waterMat.uniforms.uSunDir.value.copy(this.atmosphere.sun.position).normalize();
+    
+    const fUnifs = this.terrain.floorMat.uniforms;
+    fUnifs.uSunDir.value.copy(this.atmosphere.sun.position).normalize();
+    fUnifs.uSunColor.value.copy(this.atmosphere.sun.color);
+    
     const fog = this.scene.fog as THREE.Fog;
     this.waterMat.uniforms.fogColor.value.copy(fog.color);
     this.waterMat.uniforms.fogNear.value = fog.near;
     this.waterMat.uniforms.fogFar.value = fog.far;
+
+    fUnifs.fogColor.value.copy(fog.color);
+    fUnifs.fogNear.value = fog.near;
+    fUnifs.fogFar.value = fog.far;
 
     this.terrain.waterGroup.visible = false;
     this.scene.overrideMaterial = this.depthMaterial;

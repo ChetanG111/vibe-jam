@@ -25,6 +25,8 @@ export class Atmosphere {
     this.sun.shadow.camera.right = 80;
     this.sun.shadow.camera.top = 80;
     this.sun.shadow.camera.bottom = -80;
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.02;
     this.scene.add(this.sun);
 
     const hemi = new THREE.HemisphereLight(0x88ddff, 0x0066cc, 0.6);

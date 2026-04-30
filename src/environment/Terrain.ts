@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config';
 import { getFloorHeight } from '../utils/math';
+import { FLOOR_VERTEX_SHADER, FLOOR_FRAGMENT_SHADER } from '../shaders/floorShader';
 
 export class Terrain {
   public floorGroup = new THREE.Group();
@@ -11,19 +12,27 @@ export class Terrain {
   private waterChunks = new Map<string, THREE.Mesh>();
   private floorChunks = new Map<string, THREE.Mesh>();
   private waterMat: THREE.ShaderMaterial;
-  private floorMat: THREE.MeshStandardMaterial;
+  public floorMat: THREE.ShaderMaterial;
   
-  private raycaster = new THREE.Raycaster();
   private scene: THREE.Scene;
 
   constructor(scene: THREE.Scene, waterMat: THREE.ShaderMaterial) {
     this.scene = scene;
     this.waterMat = waterMat;
     
-    this.floorMat = new THREE.MeshStandardMaterial({ 
-      color: 0xc2b280, 
-      roughness: 0.9,
-      flatShading: true 
+    this.floorMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(0xc2b280) },
+        uSunDir: { value: new THREE.Vector3(0.5, 1, 0.5).normalize() },
+        uSunColor: { value: new THREE.Color(0xfffbe8) },
+        uAmbientColor: { value: new THREE.Color(0x88ddff).multiplyScalar(0.5) },
+        fogColor: { value: new THREE.Color(0x002233) },
+        fogNear: { value: 2 },
+        fogFar: { value: 150 }
+      },
+      vertexShader: FLOOR_VERTEX_SHADER,
+      fragmentShader: FLOOR_FRAGMENT_SHADER,
+      transparent: false
     });
 
     this.scene.add(this.waterGroup);
@@ -37,23 +46,16 @@ export class Terrain {
   }
 
   public getFloorData(x: number, z: number): { y: number; normal: THREE.Vector3 } | null {
-    if (this.floorGroup.children.length === 0) return null;
+    const h = getFloorHeight(x, z) + CONFIG.floorDepth;
+    const eps = 0.1;
+    const hX = getFloorHeight(x + eps, z) + CONFIG.floorDepth;
+    const hZ = getFloorHeight(x, z + eps) + CONFIG.floorDepth;
     
-    this.raycaster.set(
-      new THREE.Vector3(x, 20, z), 
-      new THREE.Vector3(0, -1, 0)
-    );
+    const dx = new THREE.Vector3(eps, hX - h, 0);
+    const dz = new THREE.Vector3(0, hZ - h, eps);
+    const normal = new THREE.Vector3().crossVectors(dz, dx).normalize();
     
-    this.floorGroup.updateMatrixWorld();
-    const intersects = this.raycaster.intersectObjects(this.floorGroup.children, true);
-    
-    if (intersects.length > 0) {
-      const hit = intersects[0];
-      const normal = hit.face!.normal.clone();
-      normal.applyQuaternion(hit.object.quaternion);
-      return { y: hit.point.y, normal };
-    }
-    return null;
+    return { y: h, normal };
   }
 
   public createRocks() {
@@ -245,16 +247,20 @@ export class Terrain {
     return tree;
   }
 
-  public updateChunks(subX: number, subZ: number) {
-    const cx = Math.round(subX / CONFIG.chunkSize);
-    const cz = Math.round(subZ / CONFIG.chunkSize);
+  public updateChunks(positions: THREE.Vector3[]) {
     const required = new Set<string>();
     const dist = CONFIG.renderDistance;
-    for (let x = cx - dist; x <= cx + dist; x++) {
-      for (let z = cz - dist; z <= cz + dist; z++) {
-        required.add(`${x},${z}`);
+    const size = CONFIG.chunkSize;
+
+    positions.forEach(pos => {
+      const cx = Math.round(pos.x / size);
+      const cz = Math.round(pos.z / size);
+      for (let x = cx - dist; x <= cx + dist; x++) {
+        for (let z = cz - dist; z <= cz + dist; z++) {
+          required.add(`${x},${z}`);
+        }
       }
-    }
+    });
 
     required.forEach(key => {
       if (!this.waterChunks.has(key)) {
@@ -284,18 +290,12 @@ export class Terrain {
     this.waterGroup.add(waterChunk);
     this.waterChunks.set(key, waterChunk);
 
+    // Floor is now a flat plane in JS, displaced in Shader for perfect stitching
     const floorGeo = new THREE.PlaneGeometry(size, size, segments, segments);
-    const fPos = floorGeo.attributes.position;
-    for (let i = 0; i < fPos.count; i++) {
-      const vx = fPos.getX(i) + xOffset;
-      const vz = fPos.getY(i) + zOffset;
-      fPos.setZ(i, getFloorHeight(vx, vz) - CONFIG.floorDepth);
-    }
-    floorGeo.computeVertexNormals();
     const floorChunk = new THREE.Mesh(floorGeo, this.floorMat);
     floorChunk.rotation.x = -Math.PI / 2;
     floorChunk.position.set(xOffset, CONFIG.floorDepth, zOffset);
-    floorChunk.receiveShadow = true;
+    floorChunk.frustumCulled = false;
     this.floorGroup.add(floorChunk);
     this.floorChunks.set(key, floorChunk);
   }
