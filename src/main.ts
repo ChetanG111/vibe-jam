@@ -6,14 +6,23 @@ class VibeScene {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
-  private controls: OrbitControls;
-  private submarine: THREE.Group;
+  private submarine!: THREE.Group;
   private water!: THREE.Mesh;
   private clouds: THREE.Group[] = [];
   private waterVertices!: Float32Array;
   private waterOrigY!: Float32Array;
   private clock = new THREE.Clock();
   private skyColor = 0x55ccff;
+
+  // --- Camera & controls ---
+  private controls!: OrbitControls;
+  private cameraMode: 'follow' | 'orbit' = 'follow';
+  private snapCamera = false; // when true, instantly position camera (no lerp)
+
+  // --- Player input & submarine state ---
+  private keys = new Set<string>();
+  private submarineHeading = 0;   // Y-axis rotation in radians
+  private lastElapsed = 0;        // for delta-time computation
 
   constructor() {
     // 1. Basic Setup
@@ -35,9 +44,18 @@ class VibeScene {
     this.renderer.toneMappingExposure = 1.1;
     document.getElementById('app')?.appendChild(this.renderer.domElement);
 
+    // OrbitControls (disabled by default — only active in orbit mode)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI / 2.05;
+    this.controls.enabled = false;
+
+    // WASD key tracking — only preventDefault for movement keys
+    window.addEventListener('keydown', (e) => {
+      this.keys.add(e.code);
+      if (['KeyW', 'KeyS', 'KeyA', 'KeyD'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
     // 2. Lighting
     this.setupLighting();
@@ -54,6 +72,8 @@ class VibeScene {
 
     // 5. UI Controls
     this.createFogPanel();
+    this.createControlsHUD();
+    this.createCameraToggle();
 
     // 6. Run
     window.addEventListener('resize', () => this.onWindowResize());
@@ -187,21 +207,10 @@ class VibeScene {
     fin.position.x = -1.5;
     sub.add(fin);
 
-    // Animations
+    // Propeller spin — only child animation we keep via GSAP
     gsap.to(prop.rotation, { x: Math.PI * 2, duration: 1, repeat: -1, ease: 'none' });
 
-    // NOTE: Y position is driven in animate() to track the water surface.
-    // Only keep the gentle rotation bob here.
-    gsap.to(sub.rotation, {
-      z: 0.05,
-      x: 0.02,
-      duration: 3,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut',
-    });
-
-    // Starting Y will be overridden each frame in animate()
+    // All other sub rotation/position is driven manually in animate()
     sub.position.y = 0.7;
     return sub;
   }
@@ -520,11 +529,49 @@ class VibeScene {
     });
   }
 
+  /** Move & rotate the submarine based on currently held keys. */
+  private processInput(dt: number) {
+    const MOVE_SPEED = 8;   // units per second
+    const TURN_SPEED = 1.8; // radians per second
+
+    if (this.keys.has('KeyA')) this.submarineHeading += TURN_SPEED * dt;
+    if (this.keys.has('KeyD')) this.submarineHeading -= TURN_SPEED * dt;
+
+    // Sub's local forward axis is +X.
+    // After a Y-rotation by heading angle h:
+    //   world forward = (cos h, 0, -sin h)
+    const fwdX = Math.cos(this.submarineHeading);
+    const fwdZ = -Math.sin(this.submarineHeading);
+
+    if (this.keys.has('KeyW')) {
+      this.submarine.position.x += fwdX * MOVE_SPEED * dt;
+      this.submarine.position.z += fwdZ * MOVE_SPEED * dt;
+    }
+    if (this.keys.has('KeyS')) {
+      this.submarine.position.x -= fwdX * MOVE_SPEED * dt;
+      this.submarine.position.z -= fwdZ * MOVE_SPEED * dt;
+    }
+  }
+
   private animate() {
     requestAnimationFrame(() => this.animate());
     const t = this.clock.getElapsedTime();
+    const dt = Math.min(t - this.lastElapsed, 0.05);
+    this.lastElapsed = t;
 
-    // Animate low-poly water — gently undulate vertex Z (height) over time
+    // --- Input (WASD always active regardless of camera mode) ---
+    this.processInput(dt);
+
+    // --- Submarine orientation ---
+    this.submarine.rotation.y = this.submarineHeading;
+    this.submarine.rotation.z = Math.sin(t * 0.8) * 0.04;
+
+    let targetPitch = Math.sin(t * 0.6) * 0.02;
+    if (this.keys.has('KeyW')) targetPitch -= 0.06;
+    if (this.keys.has('KeyS')) targetPitch += 0.04;
+    this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.12;
+
+    // --- Water animation ---
     const pos = this.water.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
       const x = this.waterVertices[i * 3];
@@ -540,23 +587,160 @@ class VibeScene {
     pos.needsUpdate = true;
     this.water.geometry.computeVertexNormals();
 
-    // --- Submarine: always ride the water surface ---
-    // Body capsule radius = 0.8. We want 7-8% of diameter (≈0.11 units) below waterline.
-    // So submarine center Y = surfaceY + 0.8 - 0.11 = surfaceY + 0.69
-    const subX = this.submarine.position.x;
-    const subZ = this.submarine.position.z;
-    const surfaceY = this.getWaterHeight(subX, subZ);
-    // Lock Y — no GSAP y-animation overrides this because we removed it
+    // --- Lock submarine to water surface ---
+    const surfaceY = this.getWaterHeight(
+      this.submarine.position.x,
+      this.submarine.position.z,
+    );
     this.submarine.position.y = surfaceY + 0.69;
 
-    // Drift clouds
+    // --- Camera ---
+    if (this.cameraMode === 'orbit') {
+      // OrbitControls takes over — just let it update
+      this.controls.update();
+    } else {
+      // Third-person follow camera
+      const fwdX = Math.cos(this.submarineHeading);
+      const fwdZ = -Math.sin(this.submarineHeading);
+
+      const targetCamX = this.submarine.position.x - fwdX * 12;
+      const targetCamY = this.submarine.position.y + 5;
+      const targetCamZ = this.submarine.position.z - fwdZ * 12;
+
+      // snapCamera = true means instant repositioning (used right after mode switch)
+      const lerp = this.snapCamera ? 1.0 : 0.06;
+      this.snapCamera = false;
+
+      this.camera.position.x += (targetCamX - this.camera.position.x) * lerp;
+      this.camera.position.y += (targetCamY - this.camera.position.y) * lerp;
+      this.camera.position.z += (targetCamZ - this.camera.position.z) * lerp;
+
+      this.camera.lookAt(
+        this.submarine.position.x + fwdX * 3,
+        this.submarine.position.y + 0.8,
+        this.submarine.position.z + fwdZ * 3,
+      );
+    }
+
+    // --- Drift clouds ---
     this.clouds.forEach((cloud, index) => {
       cloud.position.x += 0.008 * (1 + (index % 3) * 0.4);
       if (cloud.position.x > 110) cloud.position.x = -110;
     });
 
-    this.controls.update();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Tiny WASD hint overlay in the bottom-left corner. */
+  private createControlsHUD() {
+    const hud = document.createElement('div');
+    hud.id = 'controls-hud';
+    hud.innerHTML = `
+      <style>
+        #controls-hud {
+          position: fixed;
+          bottom: 24px;
+          left: 24px;
+          background: rgba(0,0,0,0.45);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 12px;
+          padding: 12px 16px;
+          color: #fff;
+          font-family: 'Inter', system-ui, sans-serif;
+          font-size: 12px;
+          line-height: 1.8;
+          user-select: none;
+          z-index: 9999;
+          pointer-events: none;
+        }
+        #controls-hud .key {
+          display: inline-block;
+          background: rgba(255,255,255,0.15);
+          border: 1px solid rgba(255,255,255,0.25);
+          border-radius: 5px;
+          padding: 1px 7px;
+          font-weight: 600;
+          font-size: 11px;
+          margin-right: 4px;
+        }
+      </style>
+      <div><span class="key">W</span> Forward &nbsp; <span class="key">S</span> Backward</div>
+      <div><span class="key">A</span> Turn left &nbsp; <span class="key">D</span> Turn right</div>
+    `;
+    document.body.appendChild(hud);
+  }
+
+  /** Camera mode toggle button — top-center of screen. */
+  private createCameraToggle() {
+    const btn = document.createElement('button');
+    btn.id = 'cam-toggle';
+    btn.textContent = '🌍 Orbit View';
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #cam-toggle {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 999px;
+        padding: 8px 22px;
+        color: #fff;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        z-index: 9999;
+        transition: background 0.2s, border-color 0.2s, transform 0.12s;
+        user-select: none;
+        white-space: nowrap;
+      }
+      #cam-toggle:hover {
+        background: rgba(255,255,255,0.18);
+        border-color: rgba(255,255,255,0.4);
+      }
+      #cam-toggle:active {
+        transform: translateX(-50%) scale(0.95);
+      }
+      #cam-toggle.orbit-active {
+        background: rgba(64, 176, 255, 0.25);
+        border-color: rgba(64, 176, 255, 0.6);
+        color: #a8dfff;
+      }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(btn);
+
+    btn.addEventListener('click', () => {
+      if (this.cameraMode === 'follow') {
+        // Switch to orbit
+        this.cameraMode = 'orbit';
+        this.controls.enabled = true;
+        // Point orbit target at the submarine so it orbits around it
+        this.controls.target.set(
+          this.submarine.position.x,
+          this.submarine.position.y,
+          this.submarine.position.z,
+        );
+        this.controls.update();
+        btn.textContent = '🚢 Follow Cam';
+        btn.classList.add('orbit-active');
+      } else {
+        // Switch back to follow — snap camera instantly to behind-sub position
+        this.cameraMode = 'follow';
+        this.controls.enabled = false;
+        this.snapCamera = true;
+        btn.textContent = '🌍 Orbit View';
+        btn.classList.remove('orbit-active');
+      }
+    });
   }
 }
 
