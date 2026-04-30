@@ -6,7 +6,6 @@ class VibeScene {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private submarine!: THREE.Group;
-  private water!: THREE.Mesh;
   private clouds: THREE.Group[] = [];
   private depthTarget!: THREE.WebGLRenderTarget;
   private depthMaterial!: THREE.MeshDepthMaterial;
@@ -14,8 +13,6 @@ class VibeScene {
   private propeller!: THREE.Group;
   private sunRays: THREE.Group = new THREE.Group();
   private currentPropSpeed = 0;
-  private waterVertices!: Float32Array;
-  private waterOrigY!: Float32Array;
   private clock = new THREE.Clock();
   private skyColor = 0x55ccff;
 
@@ -65,6 +62,9 @@ class VibeScene {
     uwFogNear: 2,
     uwFogFar: 80,
     uwBgColor: 0x002233,
+    // Chunks
+    renderDistance: 3,
+    chunkSize: 100,
   };
 
   // --- Particles state ---
@@ -77,9 +77,16 @@ class VibeScene {
     maxLife: number;
     scale: number;
   }> = [];
-  private floorMesh!: THREE.Mesh;
   private rockGroup: THREE.Group = new THREE.Group();
   private coralGroup: THREE.Group = new THREE.Group();
+  // --- Chunk Management ---
+  private waterGroup = new THREE.Group();
+  private floorGroup = new THREE.Group();
+  private waterChunks = new Map<string, THREE.Mesh>();
+  private floorChunks = new Map<string, THREE.Mesh>();
+  private waterMat!: THREE.ShaderMaterial;
+  private floorMat!: THREE.MeshStandardMaterial;
+
   private nextWakeIndex = 0;
   private spawnAccumulator = 0;
   private raycaster = new THREE.Raycaster();
@@ -124,6 +131,8 @@ class VibeScene {
     this.createIslands();
     this.createOceanFloor();
     
+    this.scene.add(this.waterGroup);
+    this.scene.add(this.floorGroup);
     this.scene.add(this.coralGroup);
     this.scene.add(this.rockGroup);
     
@@ -172,32 +181,6 @@ class VibeScene {
   }
 
   private createWater() {
-    // Low-poly water: subdivided plane with vertex displacement for faceted look
-    const segments = 80;
-    const size = 300;
-    const waterGeo = new THREE.PlaneGeometry(size, size, segments, segments);
-
-    // Displace Y (Z before rotation) vertices randomly for low-poly faceted look
-    const pos = waterGeo.attributes.position;
-    const waveAmplitude = 0.45;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getY(i); // before rotation, Y is the second planar axis
-      const wave =
-        Math.sin(x * 0.18 + 0.5) * waveAmplitude * 0.6 +
-        Math.sin(z * 0.22 + 1.2) * waveAmplitude * 0.5 +
-        Math.sin((x + z) * 0.12) * waveAmplitude * 0.4 +
-        (Math.random() - 0.5) * waveAmplitude * 0.9;
-      pos.setZ(i, wave);
-    }
-
-    // Store original positions for animation
-    this.waterVertices = new Float32Array(pos.array);
-    this.waterOrigY = new Float32Array(pos.count);
-    for (let i = 0; i < pos.count; i++) {
-      this.waterOrigY[i] = pos.getZ(i);
-    }
-
     // --- Depth render target for foam ---
     const dpr = this.renderer.getPixelRatio();
     const w = Math.floor(window.innerWidth * dpr);
@@ -208,11 +191,10 @@ class VibeScene {
     this.depthTarget.depthTexture.format = THREE.DepthFormat;
     this.depthTarget.depthTexture.type = THREE.UnsignedIntType;
     
-    // Dedicated depth material for the first pass (performance boost)
     this.depthMaterial = new THREE.MeshDepthMaterial();
 
-    // --- Custom ShaderMaterial with depth-based foam ---
-    const waterMat = new THREE.ShaderMaterial({
+    // --- Custom ShaderMaterial with wave displacement and depth-based foam ---
+    this.waterMat = new THREE.ShaderMaterial({
       transparent: true,
       uniforms: {
         uTime:       { value: 0 },
@@ -225,17 +207,31 @@ class VibeScene {
         uSunDir:     { value: new THREE.Vector3().copy(this.sun.position).normalize() },
         uOpacity:    { value: this.config.waterOpacity },
         uFoamStrength: { value: this.config.foamIntensity },
+        uWaveSpeed:  { value: this.config.waveSpeed },
+        uWaveHeight: { value: this.config.waveHeight },
         fogColor:    { value: (this.scene.fog as THREE.Fog).color },
         fogNear:     { value: (this.scene.fog as THREE.Fog).near },
         fogFar:      { value: (this.scene.fog as THREE.Fog).far },
       },
       side: THREE.DoubleSide,
       vertexShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uWaveSpeed;
+        uniform float uWaveHeight;
         varying vec3 vWorldPos;
         varying float vViewZ;
+
         void main() {
           vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          
+          // Wave displacement
+          float wave = sin(worldPos.x * 0.2 + uTime * 0.6 * uWaveSpeed) * 0.18 * uWaveHeight +
+                       sin(worldPos.z * 0.25 + uTime * 0.45 * uWaveSpeed) * 0.14 * uWaveHeight +
+                       sin((worldPos.x + worldPos.z) * 0.15 + uTime * 0.5 * uWaveSpeed) * 0.1 * uWaveHeight;
+          
+          worldPos.y += wave;
           vWorldPos = worldPos.xyz;
+          
           vec4 mvPos = viewMatrix * worldPos;
           vViewZ = -mvPos.z;
           gl_Position = projectionMatrix * mvPos;
@@ -306,10 +302,6 @@ class VibeScene {
         }
       `,
     });
-
-    this.water = new THREE.Mesh(waterGeo, waterMat);
-    this.water.rotation.x = -Math.PI / 2;
-    this.scene.add(this.water);
   }
 
   private createCartoonSubmarine() {
@@ -426,7 +418,7 @@ class VibeScene {
    * because it accounts for the flat triangle surfaces of the low-poly mesh.
    */
   private getFloorData(x: number, z: number): { y: number; normal: THREE.Vector3 } | null {
-    if (!this.floorMesh) return null;
+    if (this.floorGroup.children.length === 0) return null;
     
     // Raycast from well above the floor down towards it
     this.raycaster.set(
@@ -435,14 +427,16 @@ class VibeScene {
     );
     
     // Ensure the matrix is up to date for accurate intersection
-    this.floorMesh.updateMatrixWorld();
-    const intersects = this.raycaster.intersectObject(this.floorMesh);
+    this.floorGroup.updateMatrixWorld();
+    const intersects = this.raycaster.intersectObjects(this.floorGroup.children, true);
     
     if (intersects.length > 0) {
       const hit = intersects[0];
       // Get the face normal and transform it to world space
       const normal = hit.face!.normal.clone();
-      normal.applyQuaternion(this.floorMesh.quaternion);
+      
+      // The hit object is a chunk mesh
+      normal.applyQuaternion(hit.object.quaternion);
       
       return { y: hit.point.y, normal };
     }
@@ -603,30 +597,96 @@ class VibeScene {
   }
 
   private createOceanFloor() {
-    const segments = 120; // Increased resolution to better match artifact positioning
-    const size = 600; // Large floor
-    const floorGeo = new THREE.PlaneGeometry(size, size, segments, segments);
-    
-    // Displace vertices for low-poly terrain look
-    const pos = floorGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getY(i); // Plane Y is world Z after rotation
-      pos.setZ(i, this.getFloorHeight(x, z) - this.config.floorDepth);
-    }
-    floorGeo.computeVertexNormals();
-
-    const floorMat = new THREE.MeshStandardMaterial({ 
+    this.floorMat = new THREE.MeshStandardMaterial({ 
       color: 0xc2b280, // Sandy color
       roughness: 0.9,
       flatShading: true 
     });
+  }
 
-    this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
-    this.floorMesh.rotation.x = -Math.PI / 2;
-    this.floorMesh.position.y = this.config.floorDepth;
-    this.floorMesh.receiveShadow = true;
-    this.scene.add(this.floorMesh);
+  private updateWorldChunks() {
+    const subX = this.submarine.position.x;
+    const subZ = this.submarine.position.z;
+    const cx = Math.round(subX / this.config.chunkSize);
+    const cz = Math.round(subZ / this.config.chunkSize);
+    
+    // Determine required chunks
+    const required = new Set<string>();
+    const dist = this.config.renderDistance;
+    for (let x = cx - dist; x <= cx + dist; x++) {
+      for (let z = cz - dist; z <= cz + dist; z++) {
+        required.add(`${x},${z}`);
+      }
+    }
+
+    // Add new chunks
+    required.forEach(key => {
+      if (!this.waterChunks.has(key)) {
+        const [x, z] = key.split(',').map(Number);
+        this.addChunk(x, z);
+      }
+    });
+
+    // Remove old chunks
+    this.waterChunks.forEach((_, key) => {
+      if (!required.has(key)) {
+        this.removeChunk(key);
+      }
+    });
+  }
+
+  private addChunk(cx: number, cz: number) {
+    const key = `${cx},${cz}`;
+    const size = this.config.chunkSize;
+    const segments = 24; // Resolution per chunk
+    
+    const xOffset = cx * size;
+    const zOffset = cz * size;
+
+    // --- Water Chunk ---
+    const waterGeo = new THREE.PlaneGeometry(size, size, segments, segments);
+    // Add jitter for low-poly look (vertex displacement in shader handles waves)
+    const wPos = waterGeo.attributes.position;
+    for (let i = 0; i < wPos.count; i++) {
+      wPos.setZ(i, (Math.random() - 0.5) * 0.4);
+    }
+    const waterChunk = new THREE.Mesh(waterGeo, this.waterMat);
+    waterChunk.rotation.x = -Math.PI / 2;
+    waterChunk.position.set(xOffset, 0, zOffset);
+    this.waterGroup.add(waterChunk);
+    this.waterChunks.set(key, waterChunk);
+
+    // --- Floor Chunk ---
+    const floorGeo = new THREE.PlaneGeometry(size, size, segments, segments);
+    const fPos = floorGeo.attributes.position;
+    for (let i = 0; i < fPos.count; i++) {
+      // Plane X/Y are world X/Z
+      const vx = fPos.getX(i) + xOffset;
+      const vz = fPos.getY(i) + zOffset;
+      fPos.setZ(i, this.getFloorHeight(vx, vz) - this.config.floorDepth);
+    }
+    floorGeo.computeVertexNormals();
+    const floorChunk = new THREE.Mesh(floorGeo, this.floorMat);
+    floorChunk.rotation.x = -Math.PI / 2;
+    floorChunk.position.set(xOffset, this.config.floorDepth, zOffset);
+    floorChunk.receiveShadow = true;
+    this.floorGroup.add(floorChunk);
+    this.floorChunks.set(key, floorChunk);
+  }
+
+  private removeChunk(key: string) {
+    const wChunk = this.waterChunks.get(key);
+    if (wChunk) {
+      this.waterGroup.remove(wChunk);
+      wChunk.geometry.dispose();
+      this.waterChunks.delete(key);
+    }
+    const fChunk = this.floorChunks.get(key);
+    if (fChunk) {
+      this.floorGroup.remove(fChunk);
+      fChunk.geometry.dispose();
+      this.floorChunks.delete(key);
+    }
   }
 
   private createCorals() {
@@ -1168,6 +1228,10 @@ class VibeScene {
       this.createCorals();
     });
 
+    addSlider('Render Dist', 'cfg-render-dist', 1, 8, 1, this.config.renderDistance, (v) => {
+      this.config.renderDistance = Math.floor(v);
+    });
+
     const hr4 = document.createElement('hr');
     hr4.style.border = '0';
     hr4.style.borderTop = '1px solid rgba(255,255,255,0.1)';
@@ -1275,22 +1339,10 @@ class VibeScene {
     if (this.keys.has('KeyW')) targetPitch -= 0.08; // More aggressive tilt
     if (this.keys.has('KeyS')) targetPitch += 0.06;
     this.submarine.rotation.x += (targetPitch - this.submarine.rotation.x) * 0.25; // Faster pitch response
+    
+    // --- Chunk Updates ---
+    this.updateWorldChunks();
 
-    // --- Water animation (vertex displacement) ---
-    const waterPos = this.water.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < waterPos.count; i++) {
-      const vx = this.waterVertices[i * 3];
-      const vz = this.waterVertices[i * 3 + 1];
-      const base = this.waterOrigY[i];
-      const newZ =
-        base +
-        Math.sin(vx * 0.2 + t * 0.6 * this.config.waveSpeed) * 0.18 * this.config.waveHeight +
-        Math.sin(vz * 0.25 + t * 0.45 * this.config.waveSpeed) * 0.14 * this.config.waveHeight +
-        Math.sin((vx + vz) * 0.15 + t * 0.5 * this.config.waveSpeed) * 0.1 * this.config.waveHeight;
-      waterPos.setZ(i, newZ);
-    }
-    waterPos.needsUpdate = true;
- 
     // --- Camera ---
     if (this.cameraMode === 'orbit') {
       this.controls.update();
@@ -1332,17 +1384,18 @@ class VibeScene {
     this.propeller.rotation.x += this.currentPropSpeed * dt;
 
     // --- Depth pass: render scene into depth target ---
-    const waterMat = this.water.material as THREE.ShaderMaterial;
-    waterMat.uniforms.uTime.value = t;
+    this.waterMat.uniforms.uTime.value = t;
+    this.waterMat.uniforms.uWaveSpeed.value = this.config.waveSpeed;
+    this.waterMat.uniforms.uWaveHeight.value = this.config.waveHeight;
     
     // Sync uniforms (sun direction and fog)
-    waterMat.uniforms.uSunDir.value.copy(this.sun.position).normalize();
+    this.waterMat.uniforms.uSunDir.value.copy(this.sun.position).normalize();
     const fog = this.scene.fog as THREE.Fog;
-    waterMat.uniforms.fogColor.value.copy(fog.color);
-    waterMat.uniforms.fogNear.value = fog.near;
-    waterMat.uniforms.fogFar.value = fog.far;
+    this.waterMat.uniforms.fogColor.value.copy(fog.color);
+    this.waterMat.uniforms.fogNear.value = fog.near;
+    this.waterMat.uniforms.fogFar.value = fog.far;
 
-    this.water.visible = false;
+    this.waterGroup.visible = false;
     this.scene.overrideMaterial = this.depthMaterial;
     
     this.renderer.setRenderTarget(this.depthTarget);
@@ -1350,7 +1403,7 @@ class VibeScene {
     this.renderer.setRenderTarget(null);
     
     this.scene.overrideMaterial = null;
-    this.water.visible = true;
+    this.waterGroup.visible = true;
 
     // --- Wake Particles ---
     if (this.config.wakeEnabled) {
