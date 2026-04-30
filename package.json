@@ -6,6 +6,7 @@
   "description": "Vibe Jam - Vanilla Three.js restart",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview --host"
   },
